@@ -45,6 +45,7 @@ public class IngestionService {
     private final GeofenceService geofenceService;
     private final GeofenceEventRepository geofenceEventRepository;
     private final EtaService etaService;
+    private final StatePersistenceService statePersistenceService;
 
     // Striped locks keyed by vehicleId
     private final Lock[] stripedLocks;
@@ -60,7 +61,8 @@ public class IngestionService {
                             GeofenceEngine geofenceEngine,
                             GeofenceService geofenceService,
                             GeofenceEventRepository geofenceEventRepository,
-                            EtaService etaService) {
+                            EtaService etaService,
+                            StatePersistenceService statePersistenceService) {
         this.clock = clock;
         this.props = props;
         this.registryService = registryService;
@@ -70,6 +72,7 @@ public class IngestionService {
         this.geofenceService = geofenceService;
         this.geofenceEventRepository = geofenceEventRepository;
         this.etaService = etaService;
+        this.statePersistenceService = statePersistenceService;
 
         this.stripedLocks = new Lock[props.stripedLockCount()];
         for (int i = 0; i < stripedLocks.length; i++) {
@@ -188,7 +191,12 @@ public class IngestionService {
         // 12. Persist-then-commit: persist transitions in DB, then commit to memory
         if (!evalResult.transitions().isEmpty()) {
             try {
-                persistTransitions(evalResult.transitions(), vehicleId, request.ts());
+                // Determine the new zone states map to persist in the snapshot
+                Map<Long, Boolean> newZoneStates = new HashMap<>(state.getZoneStates());
+                newZoneStates.putAll(evalResult.newZoneStates());
+
+                persistTransitionsAndState(evalResult.transitions(), vehicleId, request.ts(),
+                        newPosition, speed, state.getLastSnappedIndex(), newZoneStates, state.getEtaMap());
             } catch (DataAccessException ex) {
                 // DB failure: discard new state, return 503
                 log.error("DB failure during geofence transition persist for vehicle={}", vehicleId);
@@ -246,7 +254,9 @@ public class IngestionService {
     }
 
     @Transactional
-    protected void persistTransitions(List<ZoneTransition> transitions, long vehicleId, long pingTs) {
+    protected void persistTransitionsAndState(List<ZoneTransition> transitions, long vehicleId, long pingTs,
+                                              GeoPoint pos, double speedEma, int snappedIndex,
+                                              Map<Long, Boolean> zoneStates, Map<Long, VehicleState.EtaEntry> etaMap) {
         for (ZoneTransition t : transitions) {
             GeofenceEvent event = GeofenceEvent.builder()
                     .eventType(t.type())
@@ -258,5 +268,6 @@ public class IngestionService {
                     .build();
             geofenceEventRepository.save(event);
         }
+        statePersistenceService.flushSynchronously(vehicleId, pos, pingTs, speedEma, snappedIndex, zoneStates, etaMap);
     }
 }

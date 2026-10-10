@@ -40,6 +40,7 @@ class IngestionServiceTest {
     private GeofenceService geofenceService;
     private GeofenceEventRepository geofenceEventRepository;
     private EtaService etaService;
+    private StatePersistenceService statePersistenceService;
     private IngestionService service;
 
     @BeforeEach
@@ -65,9 +66,10 @@ class IngestionServiceTest {
         when(geofenceService.candidates(any())).thenReturn(Collections.emptyList());
         geofenceEventRepository = mock(GeofenceEventRepository.class);
         etaService = mock(EtaService.class);
+        statePersistenceService = mock(StatePersistenceService.class);
 
         service = new IngestionService(clock, props, registryService, stateStore, historyWriter,
-                geofenceEngine, geofenceService, geofenceEventRepository, etaService);
+                geofenceEngine, geofenceService, geofenceEventRepository, etaService, statePersistenceService);
 
         // Setup default device mapping
         Vehicle vehicle = new Vehicle();
