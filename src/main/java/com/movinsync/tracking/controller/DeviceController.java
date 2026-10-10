@@ -9,21 +9,25 @@ import org.springframework.http.ResponseEntity;
 public class DeviceController {
 
     private final com.movinsync.tracking.service.DeviceRegistryService deviceService;
+    private final com.movinsync.tracking.repository.DeviceRepository deviceRepository;
 
-    public DeviceController(com.movinsync.tracking.service.DeviceRegistryService deviceService) {
+    public DeviceController(com.movinsync.tracking.service.DeviceRegistryService deviceService,
+                            com.movinsync.tracking.repository.DeviceRepository deviceRepository) {
         this.deviceService = deviceService;
+        this.deviceRepository = deviceRepository;
     }
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Object> getDevices() {
-        return ResponseEntity.ok(java.util.Collections.emptyList());
+        return ResponseEntity.ok(deviceRepository.findAll());
     }
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Object> createDevice(@RequestBody Object device) {
+    public ResponseEntity<Object> createDevice(@RequestBody com.movinsync.tracking.entity.Device device) {
+        com.movinsync.tracking.entity.Device saved = deviceRepository.save(device);
         deviceService.evictCache();
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(saved);
     }
 }

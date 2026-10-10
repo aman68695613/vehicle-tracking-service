@@ -209,9 +209,9 @@ class EtaServiceTest {
         state.setLastSnappedIndex(2); // start near end of route
 
         // Vehicle near stop 2
-        etaService.updateEta(new GeoPoint(12.940, 77.610), state, route, false);
+        var res = etaService.updateEta(new GeoPoint(12.940, 77.610), state, route, false);
 
         // Should find a segment near index 2 (could be 1 or 2 since point is on the boundary)
-        assertTrue(state.getLastSnappedIndex() >= 1 && state.getLastSnappedIndex() <= 2);
+        assertTrue(res.snappedIndex() >= 1 && res.snappedIndex() <= 2);
     }
 }

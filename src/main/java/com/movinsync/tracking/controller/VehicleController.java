@@ -20,8 +20,8 @@ public class VehicleController {
     @GetMapping("/{id}/position")
     @PreAuthorize("hasAnyRole('ADMIN', 'APPROVER')")
     public ResponseEntity<Object> getPosition(@PathVariable Long id) {
-        com.movinsync.tracking.domain.state.VehicleState state = stateStore.getOrCreate(id);
-        if (state.getLastPosition() == null) {
+        com.movinsync.tracking.domain.state.VehicleState state = stateStore.get(id);
+        if (state == null || state.getLastPosition() == null) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(state.getLastPosition());

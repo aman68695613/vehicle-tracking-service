@@ -53,4 +53,11 @@ public class DeviceRegistryService {
         }
         return Optional.empty();
     }
+
+    /**
+     * Clear the internal device cache.
+     */
+    public void evictCache() {
+        deviceCache.invalidateAll();
+    }
 }

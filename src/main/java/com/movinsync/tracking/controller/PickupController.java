@@ -38,10 +38,12 @@ public class PickupController {
         com.movinsync.tracking.entity.PickupRequest pickup = pickupOpt.get();
         Long routeId = pickup.getRouteStop().getRoute().getId();
         
-        var vehicleOpt = vehicleRepo.findByActiveRouteId(routeId);
-        if (vehicleOpt.isEmpty()) return ResponseEntity.notFound().build();
+        var vehicles = vehicleRepo.findByActiveRouteId(routeId);
+        if (vehicles.isEmpty()) return ResponseEntity.notFound().build();
 
-        com.movinsync.tracking.domain.state.VehicleState state = stateStore.getOrCreate(vehicleOpt.get().getId());
+        com.movinsync.tracking.domain.state.VehicleState state = stateStore.get(vehicles.get(0).getId());
+        if (state == null) return ResponseEntity.notFound().build();
+        
         var etaEntry = state.getEtaMap().get(pickup.getRouteStop().getId());
 
         if (etaEntry == null) return ResponseEntity.notFound().build();

@@ -293,11 +293,9 @@ class IngestionServiceTest {
 
     @Test
     void queueFull_dropsHistoryButAcceptsPing() throws Exception {
-        // Fill the HistoryWriter queue
-        for (int i = 0; i < 11000; i++) {
-            historyWriter.enqueue(new com.movinsync.tracking.entity.LocationPing());
-        }
-        
+        // Simulate queue full by mocking enqueue to return false
+        doReturn(false).when(historyWriter).enqueue(any());
+
         // Sending a new ping should still be ACCEPTED, even if queue is full
         PingResult result = service.processPing(ping(NOW_MS - 1000));
         assertEquals(PingStatus.ACCEPTED, result.status());

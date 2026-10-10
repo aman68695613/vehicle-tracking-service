@@ -1,2 +1,6 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+*.java text diff=java
+*.xml text
+*.properties text
+*.md text

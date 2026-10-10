@@ -15,16 +15,28 @@ import java.util.ArrayList;
 public class RouteController {
     
     private final com.movinsync.tracking.repository.RouteRepository routeRepository;
+    private final com.movinsync.tracking.service.EtaService etaService;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
-    public RouteController(com.movinsync.tracking.repository.RouteRepository routeRepository) {
+    public RouteController(com.movinsync.tracking.repository.RouteRepository routeRepository, com.movinsync.tracking.service.EtaService etaService) {
         this.routeRepository = routeRepository;
+        this.etaService = etaService;
+    }
+
+    public record RouteDTO(Long id, String name, String polylineJson, List<RouteStopDTO> stops) {}
+    public record RouteStopDTO(Long id, int sequenceIndex, String name, double latitude, double longitude, double cumulativeDistanceMetres) {}
+
+    private RouteDTO toDTO(Route r) {
+        List<RouteStopDTO> stopDTOs = r.getStops() == null ? List.of() : r.getStops().stream()
+            .map(s -> new RouteStopDTO(s.getId(), s.getSequenceIndex(), s.getName(), s.getLatitude(), s.getLongitude(), s.getCumulativeDistanceMetres()))
+            .toList();
+        return new RouteDTO(r.getId(), r.getName(), r.getPolylineJson(), stopDTOs);
     }
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Object> getRoutes() {
-        return ResponseEntity.ok(routeRepository.findAll());
+        return ResponseEntity.ok(routeRepository.findAll().stream().map(this::toDTO).toList());
     }
 
     @PostMapping
@@ -64,7 +76,9 @@ public class RouteController {
                 }
             }
             
-            return ResponseEntity.ok(routeRepository.save(route));
+            Route saved = routeRepository.save(route);
+            etaService.clearPolylineCache(saved.getId());
+            return ResponseEntity.ok(toDTO(saved));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

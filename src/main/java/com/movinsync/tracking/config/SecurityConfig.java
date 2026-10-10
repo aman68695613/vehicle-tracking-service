@@ -40,6 +40,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/pings").authenticated() // Needs Device API Key or JWT (Device check in controller)
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/actuator/metrics", "/actuator/prometheus").hasRole("ADMIN")
+                .requestMatchers("/actuator/**").hasRole("ADMIN")
                 .requestMatchers("/api/**").authenticated()    // Everything else under /api needs auth (JWT)
                 .anyRequest().permitAll()                      // swagger, etc.
             )
