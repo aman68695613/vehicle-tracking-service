@@ -1,10 +1,13 @@
 package com.movinsync.tracking.service;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.movinsync.tracking.entity.Device;
 import com.movinsync.tracking.entity.Vehicle;
 import com.movinsync.tracking.repository.DeviceRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.Optional;
 
 /**
@@ -14,16 +17,21 @@ import java.util.Optional;
 public class DeviceRegistryService {
 
     private final DeviceRepository deviceRepository;
+    private final Cache<String, Optional<Device>> deviceCache;
 
     public DeviceRegistryService(DeviceRepository deviceRepository) {
         this.deviceRepository = deviceRepository;
+        this.deviceCache = Caffeine.newBuilder()
+                .maximumSize(10_000)
+                .expireAfterWrite(Duration.ofHours(1))
+                .build();
     }
 
     /**
      * Look up the device by deviceId.
      */
     public Optional<Device> findDevice(String deviceId) {
-        return deviceRepository.findByDeviceId(deviceId);
+        return deviceCache.get(deviceId, id -> deviceRepository.findByDeviceId(id));
     }
 
     /**
