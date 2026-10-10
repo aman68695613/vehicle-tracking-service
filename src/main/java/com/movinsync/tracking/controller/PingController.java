@@ -25,7 +25,14 @@ public class PingController {
     }
 
     @PostMapping
-    public ResponseEntity<PingResponse> ingestPing(@Valid @RequestBody PingRequest request) {
+    public ResponseEntity<PingResponse> ingestPing(
+            @org.springframework.web.bind.annotation.RequestHeader(value = "X-Device-ID", required = false) String headerDeviceId,
+            @Valid @RequestBody PingRequest request) {
+        
+        if (headerDeviceId != null && !headerDeviceId.equals(request.deviceId())) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
+        }
+            
         PingResult result = ingestionService.processPing(request);
         PingResponse response = new PingResponse(result.status(), result.message());
         return ResponseEntity.ok(response);

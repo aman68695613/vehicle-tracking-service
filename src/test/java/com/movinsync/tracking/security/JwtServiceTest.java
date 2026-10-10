@@ -6,10 +6,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class JwtServiceTest {
 
-    private final JwtService jwtService = new JwtService();
-
     @Test
-    void validateTokenAndGetSubject_invalidToken() {
-        assertThrows(Exception.class, () -> jwtService.validateTokenAndGetSubject("invalid.token.here"));
+    void validateTokenAndGetClaims_invalidToken() {
+        JwtService jwtService = new JwtService();
+        org.springframework.test.util.ReflectionTestUtils.setField(jwtService, "secretKeyString", "movinsync-super-secret-key-that-is-at-least-32-bytes-long");
+        jwtService.init();
+        assertThrows(Exception.class, () -> jwtService.validateTokenAndGetClaims("invalid.token.here"));
     }
 }

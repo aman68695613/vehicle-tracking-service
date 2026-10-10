@@ -265,7 +265,7 @@ class GeofenceEngineTest {
     @Test
     void rectangleZone_entryAndExit() {
         RectangleGeofence rect = new RectangleGeofence(10L, "Rect",
-                12.930, 12.940, 77.605, 77.615, null, Set.of());
+                12.930, 12.940, 77.605, 77.615, 0.0, null, Set.of());
 
         VehicleState state = newState(1, false);
         state.setZoneState(10L, false);

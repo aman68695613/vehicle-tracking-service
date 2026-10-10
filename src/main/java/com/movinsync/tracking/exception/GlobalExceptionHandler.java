@@ -20,6 +20,12 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    private final java.time.Clock clock;
+
+    public GlobalExceptionHandler(java.time.Clock clock) {
+        this.clock = clock;
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()
@@ -33,18 +39,17 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(errorBody("BAD_REQUEST", ex.getMessage()));
     }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGeneral(Exception ex) {
-        log.error("Unhandled exception", ex);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(errorBody("INTERNAL_ERROR", "An unexpected error occurred"));
+    @ExceptionHandler(ServiceUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleServiceUnavailable(ServiceUnavailableException ex) {
+        log.error("Service unavailable", ex);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(errorBody("SERVICE_UNAVAILABLE", ex.getMessage()));
     }
 
     private Map<String, Object> errorBody(String code, String message) {
         return Map.of(
                 "code", code,
                 "message", message,
-                "timestamp", Instant.now().toString()
+                "timestamp", clock.instant().toString()
         );
     }
 }

@@ -64,7 +64,7 @@ class GridIndexTest {
     @Test
     void rectangleZone_pointInside() {
         RectangleGeofence rect = new RectangleGeofence(3L, "R1",
-                12.930, 12.940, 77.605, 77.615, null, Set.of());
+                12.930, 12.940, 77.605, 77.615, 0.0, null, Set.of());
         grid.rebuild(List.of(rect));
 
         List<Geofence> result = grid.candidates(new GeoPoint(12.935, 77.610));

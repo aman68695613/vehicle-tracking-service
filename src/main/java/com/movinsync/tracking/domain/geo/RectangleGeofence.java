@@ -14,21 +14,24 @@ public class RectangleGeofence extends Geofence {
     private final double maxLat;
     private final double minLon;
     private final double maxLon;
+    private final double marginMetres;
 
     public RectangleGeofence(long id, String name,
-                             double minLat, double maxLat, double minLon, double maxLon,
+                             double minLat, double maxLat, double minLon, double maxLon, double marginMetres,
                              TimeWindow timeWindow, Set<Long> allowedVehicleIds) {
         super(id, name, timeWindow, allowedVehicleIds);
         this.minLat = minLat;
         this.maxLat = maxLat;
         this.minLon = minLon;
         this.maxLon = maxLon;
+        this.marginMetres = marginMetres;
     }
 
     public double getMinLat() { return minLat; }
     public double getMaxLat() { return maxLat; }
     public double getMinLon() { return minLon; }
     public double getMaxLon() { return maxLon; }
+    public double getMarginMetres() { return marginMetres; }
 
     @Override
     public boolean contains(GeoPoint point, double marginMetres) {

@@ -41,7 +41,8 @@ public class SeedDataConfig {
             GeofenceRepository geofenceRepo,
             AppUserRepository appUserRepo,
             PickupRequestRepository pickupRequestRepo,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            com.movinsync.tracking.service.GeofenceService geofenceService) {
 
         return args -> {
             if (vehicleRepo.count() > 0) {
@@ -159,6 +160,8 @@ public class SeedDataConfig {
 
             log.info("Seed data loaded: 1 vehicle, 1 device, 1 route with 4 stops, "
                     + "3 geofence zones, 3 users, 1 pickup request.");
+                    
+            geofenceService.reloadZones();
         };
     }
 

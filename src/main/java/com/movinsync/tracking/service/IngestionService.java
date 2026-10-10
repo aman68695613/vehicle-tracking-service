@@ -49,6 +49,7 @@ public class IngestionService {
     private final EtaService etaService;
     private final StatePersistenceService statePersistenceService;
     private final Timer processTimer;
+    private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     // Striped locks keyed by vehicleId
     private final Lock[] stripedLocks;
@@ -66,7 +67,8 @@ public class IngestionService {
                             GeofenceEventRepository geofenceEventRepository,
                             EtaService etaService,
                             StatePersistenceService statePersistenceService,
-                            MeterRegistry meterRegistry) {
+                            MeterRegistry meterRegistry,
+                            org.springframework.transaction.support.TransactionTemplate transactionTemplate) {
         this.clock = clock;
         this.props = props;
         this.registryService = registryService;
@@ -77,6 +79,7 @@ public class IngestionService {
         this.geofenceEventRepository = geofenceEventRepository;
         this.etaService = etaService;
         this.statePersistenceService = statePersistenceService;
+        this.transactionTemplate = transactionTemplate;
         this.processTimer = meterRegistry.timer("ingestion.process.under.lock");
 
         this.stripedLocks = new Lock[props.stripedLockCount()];
@@ -163,15 +166,15 @@ public class IngestionService {
         // 9. Derive speed if not provided
         double speed = deriveSpeed(request, state);
 
-        // 10. Update EMA speed
+        // 10. Compute EMA speed but don't mutate state yet
+        double newSpeedEma;
         if (gap) {
-            // Reset EMA after gap
-            state.setSpeedEma(speed);
+            newSpeedEma = speed;
         } else if (state.getLastTimestampMs() > 0) {
             double alpha = props.emaAlpha();
-            state.setSpeedEma(alpha * speed + (1 - alpha) * state.getSpeedEma());
+            newSpeedEma = alpha * speed + (1 - alpha) * state.getSpeedEma();
         } else {
-            state.setSpeedEma(speed);
+            newSpeedEma = speed;
         }
 
         // 11. Geofence evaluation
@@ -200,16 +203,19 @@ public class IngestionService {
                 Map<Long, Boolean> newZoneStates = new HashMap<>(state.getZoneStates());
                 newZoneStates.putAll(evalResult.newZoneStates());
 
-                persistTransitionsAndState(evalResult.transitions(), vehicleId, request.ts(),
-                        newPosition, speed, state.getLastSnappedIndex(), newZoneStates, state.getEtaMap());
+                transactionTemplate.executeWithoutResult(status -> {
+                    persistTransitionsAndState(evalResult.transitions(), vehicleId, request.ts(),
+                            newPosition, speed, state.getLastSnappedIndex(), newZoneStates, state.getEtaMap());
+                });
             } catch (DataAccessException ex) {
                 // DB failure: discard new state, return 503
                 log.error("DB failure during geofence transition persist for vehicle={}", vehicleId);
-                throw ex; // will be caught by exception handler as 503
+                throw new com.movinsync.tracking.exception.ServiceUnavailableException("DB failure during ping ingestion", ex);
             }
         }
 
         // Commit to memory only after DB success
+        state.setSpeedEma(newSpeedEma);
         state.getZoneStates().putAll(evalResult.newZoneStates());
         state.setLastPosition(newPosition);
         state.setLastTimestampMs(request.ts());
@@ -258,8 +264,7 @@ public class IngestionService {
                 .build());
     }
 
-    @Transactional
-    protected void persistTransitionsAndState(List<ZoneTransition> transitions, long vehicleId, long pingTs,
+    private void persistTransitionsAndState(List<ZoneTransition> transitions, long vehicleId, long pingTs,
                                               GeoPoint pos, double speedEma, int snappedIndex,
                                               Map<Long, Boolean> zoneStates, Map<Long, VehicleState.EtaEntry> etaMap) {
         for (ZoneTransition t : transitions) {

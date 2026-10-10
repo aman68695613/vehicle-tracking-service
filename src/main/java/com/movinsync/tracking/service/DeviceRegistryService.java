@@ -17,13 +17,13 @@ import java.util.Optional;
 public class DeviceRegistryService {
 
     private final DeviceRepository deviceRepository;
-    private final Cache<String, Optional<DeviceVehicleInfo>> deviceCache;
+    private final Cache<String, DeviceVehicleInfo> deviceCache;
 
     public DeviceRegistryService(DeviceRepository deviceRepository) {
         this.deviceRepository = deviceRepository;
         this.deviceCache = Caffeine.newBuilder()
                 .maximumSize(10_000)
-                .expireAfterWrite(Duration.ofHours(1))
+                .expireAfterWrite(Duration.ofMinutes(5))
                 .build();
     }
 
@@ -40,7 +40,17 @@ public class DeviceRegistryService {
     public record DeviceVehicleInfo(Device device, Vehicle vehicle, String businessUnit) {}
 
     public Optional<DeviceVehicleInfo> resolve(String deviceId) {
-        return deviceCache.get(deviceId, id -> deviceRepository.findByDeviceId(id)
-                .map(d -> new DeviceVehicleInfo(d, d.getVehicle(), d.getVehicle().getBusinessUnit())));
+        DeviceVehicleInfo info = deviceCache.getIfPresent(deviceId);
+        if (info != null) {
+            return Optional.of(info);
+        }
+        Optional<Device> deviceOpt = deviceRepository.findByDeviceId(deviceId);
+        if (deviceOpt.isPresent()) {
+            Device d = deviceOpt.get();
+            DeviceVehicleInfo newInfo = new DeviceVehicleInfo(d, d.getVehicle(), d.getVehicle().getBusinessUnit());
+            deviceCache.put(deviceId, newInfo);
+            return Optional.of(newInfo);
+        }
+        return Optional.empty();
     }
 }

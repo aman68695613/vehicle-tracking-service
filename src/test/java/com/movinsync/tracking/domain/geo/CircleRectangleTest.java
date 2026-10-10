@@ -94,7 +94,7 @@ class CircleRectangleTest {
     @Test
     void rectangle_pointInside() {
         RectangleGeofence zone = new RectangleGeofence(2, "R1",
-                12.970, 12.973, 77.607, 77.612, null, Set.of());
+                12.970, 12.973, 77.607, 77.612, 0.0, null, Set.of());
 
         assertTrue(zone.contains(new GeoPoint(12.971, 77.610), 0));
     }
@@ -102,7 +102,7 @@ class CircleRectangleTest {
     @Test
     void rectangle_pointOnCorner() {
         RectangleGeofence zone = new RectangleGeofence(2, "R1",
-                12.970, 12.973, 77.607, 77.612, null, Set.of());
+                12.970, 12.973, 77.607, 77.612, 0.0, null, Set.of());
 
         // Min corner
         assertTrue(zone.contains(new GeoPoint(12.970, 77.607), 0));
@@ -113,7 +113,7 @@ class CircleRectangleTest {
     @Test
     void rectangle_pointOutside() {
         RectangleGeofence zone = new RectangleGeofence(2, "R1",
-                12.970, 12.973, 77.607, 77.612, null, Set.of());
+                12.970, 12.973, 77.607, 77.612, 0.0, null, Set.of());
 
         assertFalse(zone.contains(new GeoPoint(12.960, 77.610), 0)); // south
         assertFalse(zone.contains(new GeoPoint(12.971, 77.620), 0)); // east
@@ -122,7 +122,7 @@ class CircleRectangleTest {
     @Test
     void rectangle_exitMargin() {
         RectangleGeofence zone = new RectangleGeofence(2, "R1",
-                12.970, 12.973, 77.607, 77.612, null, Set.of());
+                12.970, 12.973, 77.607, 77.612, 0.0, null, Set.of());
 
         // Point just south of minLat
         GeoPoint south = new GeoPoint(12.9699, 77.610);
@@ -133,7 +133,7 @@ class CircleRectangleTest {
     @Test
     void rectangle_boundingBox() {
         RectangleGeofence zone = new RectangleGeofence(2, "R1",
-                12.970, 12.973, 77.607, 77.612, null, Set.of());
+                12.970, 12.973, 77.607, 77.612, 0.0, null, Set.of());
 
         BoundingBox bb = zone.boundingBox(10);
         assertTrue(bb.minLat() < 12.970);

@@ -15,24 +15,25 @@ import java.nio.charset.StandardCharsets;
 @Service
 public class JwtService {
 
-    // For case study purposes, a hardcoded secret. In production, load from properties/vault.
-    private static final String SECRET_KEY_STRING = "movinsync-super-secret-key-that-is-at-least-32-bytes-long";
-    private final SecretKey key;
+    @org.springframework.beans.factory.annotation.Value("${jwt.secret:movinsync-super-secret-key-that-is-at-least-32-bytes-long}")
+    private String secretKeyString;
+    
+    private SecretKey key;
 
-    public JwtService() {
-        this.key = Keys.hmacShaKeyFor(SECRET_KEY_STRING.getBytes(StandardCharsets.UTF_8));
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        this.key = new javax.crypto.spec.SecretKeySpec(secretKeyString.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
     }
 
     /**
-     * Validates a JWT token and returns the subject (e.g. userId) if valid.
+     * Validates a JWT token and returns the claims if valid.
      * Throws JwtException if invalid.
      */
-    public String validateTokenAndGetSubject(String token) {
-        Claims claims = Jwts.parser()
+    public Claims validateTokenAndGetClaims(String token) {
+        return Jwts.parser()
                 .verifyWith(key)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-        return claims.getSubject();
     }
 }

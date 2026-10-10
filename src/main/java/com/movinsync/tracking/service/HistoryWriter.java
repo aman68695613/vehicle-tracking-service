@@ -52,20 +52,18 @@ public class HistoryWriter {
         return offered;
     }
 
-    /**
-     * Check if a DB unique constraint violation indicates a duplicate.
-     */
-    public boolean isDuplicate(String deviceId, long timestampMs) {
-        // This is called only after a DataIntegrityViolationException during batch write.
-        // The constraint is on (device_id, timestamp_ms).
-        return true; // if the violation happened, it's a duplicate by definition
-    }
+
 
     private void consumeLoop() {
+        java.util.List<LocationPing> batch = new java.util.ArrayList<>();
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                LocationPing ping = queue.take();
-                persistSafely(ping);
+                LocationPing first = queue.take(); // block until at least 1 is available
+                batch.add(first);
+                queue.drainTo(batch, 99); // take up to 99 more (batch size 100)
+                
+                persistSafely(batch);
+                batch.clear();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -73,14 +71,22 @@ public class HistoryWriter {
         }
     }
 
-    private void persistSafely(LocationPing ping) {
+    private void persistSafely(java.util.List<LocationPing> batch) {
         try {
-            pingRepository.save(ping);
+            pingRepository.saveAll(batch);
         } catch (DataIntegrityViolationException e) {
-            // Duplicate — expected from the unique constraint
-            log.debug("Duplicate ping in history: device={} ts={}", ping.getDeviceId(), ping.getTimestampMs());
+            // A duplicate exists in the batch — save one by one to isolate it
+            for (LocationPing ping : batch) {
+                try {
+                    pingRepository.save(ping);
+                } catch (DataIntegrityViolationException ex) {
+                    log.debug("Duplicate ping in history: device={} ts={}", ping.getDeviceId(), ping.getTimestampMs());
+                } catch (Exception ex) {
+                    log.error("Failed to persist ping history: device={} ts={}", ping.getDeviceId(), ping.getTimestampMs(), ex);
+                }
+            }
         } catch (Exception e) {
-            log.error("Failed to persist ping history: device={} ts={}", ping.getDeviceId(), ping.getTimestampMs(), e);
+            log.error("Failed to persist ping batch of size {}", batch.size(), e);
         }
     }
 

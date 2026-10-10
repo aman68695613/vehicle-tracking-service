@@ -92,10 +92,11 @@ public class GeofenceService {
                     entity.getRadiusMetres(),
                     tw, allowedVehicles);
         } else if (entity.getShape() == GeofenceShape.RECTANGLE) {
+            double margin = entity.getMarginMetres() != null ? entity.getMarginMetres() : 0.0;
             return new RectangleGeofence(
                     entity.getId(), entity.getName(),
                     entity.getMinLat(), entity.getMaxLat(),
-                    entity.getMinLon(), entity.getMaxLon(),
+                    entity.getMinLon(), entity.getMaxLon(), margin,
                     tw, allowedVehicles);
         }
 

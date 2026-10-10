@@ -110,10 +110,8 @@ public class GeofenceEngine {
             double fivePercent = circle.getRadiusMetres() * 0.05;
             return Math.max(10.0, fivePercent);
         }
-        if (zone instanceof com.movinsync.tracking.domain.geo.RectangleGeofence) {
-            // Rectangle margin is stored on the entity and passed through
-            // For now the margin is passed as the zone's built-in margin
-            return 0; // will use zone-specific margin via contains()
+        if (zone instanceof com.movinsync.tracking.domain.geo.RectangleGeofence rect) {
+            return rect.getMarginMetres();
         }
         return 0;
     }

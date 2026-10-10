@@ -70,8 +70,14 @@ class IngestionServiceTest {
         statePersistenceService = mock(StatePersistenceService.class);
         MeterRegistry meterRegistry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
 
+        org.springframework.transaction.support.TransactionTemplate txTemplate = mock(org.springframework.transaction.support.TransactionTemplate.class);
+        doAnswer(inv -> {
+            ((java.util.function.Consumer<org.springframework.transaction.TransactionStatus>) inv.getArgument(0)).accept(null);
+            return null;
+        }).when(txTemplate).executeWithoutResult(any());
+
         service = new IngestionService(clock, props, registryService, stateStore, historyWriter,
-                geofenceEngine, geofenceService, geofenceEventRepository, etaService, statePersistenceService, meterRegistry);
+                geofenceEngine, geofenceService, geofenceEventRepository, etaService, statePersistenceService, meterRegistry, txTemplate);
 
         // Setup default device mapping
         Vehicle vehicle = new Vehicle();

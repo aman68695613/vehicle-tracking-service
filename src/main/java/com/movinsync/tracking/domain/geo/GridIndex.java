@@ -25,8 +25,9 @@ public class GridIndex {
     private static final double DEFAULT_CELL_SIZE = 0.01;
 
     private final double cellSize;
-    private volatile Map<Long, Set<Long>> grid; // cellKey → Set<zoneId>
-    private volatile Map<Long, Geofence> zoneMap;
+    private volatile Snapshot snapshot;
+
+    private record Snapshot(Map<Long, Set<Long>> grid, Map<Long, Geofence> zoneMap) {}
 
     public GridIndex() {
         this(DEFAULT_CELL_SIZE);
@@ -34,8 +35,7 @@ public class GridIndex {
 
     public GridIndex(double cellSize) {
         this.cellSize = cellSize;
-        this.grid = new ConcurrentHashMap<>();
-        this.zoneMap = new ConcurrentHashMap<>();
+        this.snapshot = new Snapshot(Map.of(), Map.of());
     }
 
     /**
@@ -63,8 +63,7 @@ public class GridIndex {
             }
         }
 
-        this.grid = newGrid;
-        this.zoneMap = newZoneMap;
+        this.snapshot = new Snapshot(newGrid, newZoneMap);
         log.info("Grid rebuilt: {} zones in {} cells", zones.size(), newGrid.size());
     }
 
@@ -77,10 +76,11 @@ public class GridIndex {
         long col = cellCol(point.lon());
         long key = cellKey(row, col);
 
-        Set<Long> zoneIds = grid.getOrDefault(key, Set.of());
+        Snapshot snap = this.snapshot;
+        Set<Long> zoneIds = snap.grid().getOrDefault(key, Set.of());
         List<Geofence> result = new ArrayList<>(zoneIds.size());
         for (Long id : zoneIds) {
-            Geofence z = zoneMap.get(id);
+            Geofence z = snap.zoneMap().get(id);
             if (z != null) result.add(z);
         }
         return result;
@@ -90,14 +90,14 @@ public class GridIndex {
      * Get a zone by ID (for union with insideZones set).
      */
     public Optional<Geofence> getZone(long id) {
-        return Optional.ofNullable(zoneMap.get(id));
+        return Optional.ofNullable(snapshot.zoneMap().get(id));
     }
 
     /**
      * Return all zones in the index.
      */
     public Collection<Geofence> allZones() {
-        return zoneMap.values();
+        return snapshot.zoneMap().values();
     }
 
     private long cellRow(double lat) {

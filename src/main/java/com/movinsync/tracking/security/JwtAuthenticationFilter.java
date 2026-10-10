@@ -38,12 +38,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String token = authHeader.substring(7);
 
         try {
-            String subject = jwtService.validateTokenAndGetSubject(token);
+            io.jsonwebtoken.Claims claims = jwtService.validateTokenAndGetClaims(token);
+            String subject = claims.getSubject();
             if (subject != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                // In a real app, we might load the user from DB to get roles.
-                // For stateless JWT, we can just trust the token.
+                
+                String role = claims.get("role", String.class);
+                java.util.List<org.springframework.security.core.authority.SimpleGrantedAuthority> authorities = 
+                    role != null ? java.util.Collections.singletonList(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_" + role)) 
+                                 : java.util.Collections.emptyList();
+
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        subject, null, Collections.emptyList()
+                        subject, null, authorities
                 );
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authToken);

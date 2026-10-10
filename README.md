@@ -41,6 +41,15 @@ erDiagram
         Double centreLat
         Double centreLon
         Double radiusMetres
+        Double minLat
+        Double maxLat
+        Double minLon
+        Double maxLon
+        Double marginMetres
+        String windowStart
+        String windowEnd
+        String windowTimezone
+        String allowedVehicleIds
         Long stop_id FK
     }
     GEOFENCE_EVENT {
@@ -49,6 +58,7 @@ erDiagram
         Long zoneId FK
         String eventType
         Long timestampMs
+        Boolean detectedAfterGap
         String status
     }
     LOCATION_PING {
@@ -56,9 +66,10 @@ erDiagram
         String deviceId
         Long vehicleId FK
         Long timestampMs
-        Double lat
-        Double lon
+        Double latitude
+        Double longitude
         Double speed
+        Double bearing
     }
     VEHICLE_STATE_SNAPSHOT {
         Long vehicleId PK
@@ -71,6 +82,7 @@ erDiagram
     APP_USER {
         Long id PK
         String username
+        String passwordHash
         String role
     }
     PICKUP_REQUEST {
@@ -80,10 +92,10 @@ erDiagram
         Boolean active
     }
 
-    VEHICLE ||--o| DEVICE : "has"
-    VEHICLE }|--|| ROUTE : "active route"
+    VEHICLE ||--o{ DEVICE : "has"
+    VEHICLE }o--|| ROUTE : "active route"
     ROUTE ||--|{ ROUTE_STOP : "contains"
-    GEOFENCE_ENTITY ||--o| ROUTE_STOP : "can map to"
+    ROUTE_STOP ||--o{ GEOFENCE_ENTITY : "maps to"
     VEHICLE ||--o{ LOCATION_PING : "generates"
     VEHICLE ||--o{ GEOFENCE_EVENT : "triggers"
     GEOFENCE_ENTITY ||--o{ GEOFENCE_EVENT : "recorded in"
