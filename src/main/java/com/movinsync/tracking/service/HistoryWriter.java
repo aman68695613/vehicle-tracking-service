@@ -32,6 +32,7 @@ public class HistoryWriter {
         this.pingRepository = pingRepository;
         this.queue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
         this.droppedCounter = meterRegistry.counter("history.dropped");
+        meterRegistry.gauge("history.queue.size", this.queue, BlockingQueue::size);
 
         // Start a single consumer thread for batch writes
         Thread consumer = new Thread(this::consumeLoop, "history-writer");

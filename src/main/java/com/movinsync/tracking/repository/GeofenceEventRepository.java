@@ -8,5 +8,5 @@ import java.util.List;
 
 public interface GeofenceEventRepository extends JpaRepository<GeofenceEvent, Long> {
     List<GeofenceEvent> findByVehicleIdOrderByTimestampMsDesc(Long vehicleId);
-    List<GeofenceEvent> findByStatus(EventStatus status);
+    List<GeofenceEvent> findByStatus(EventStatus status, org.springframework.data.domain.Pageable pageable);
 }

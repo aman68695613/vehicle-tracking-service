@@ -24,7 +24,7 @@ public class GeofenceService {
 
     private final GeofenceRepository geofenceRepository;
     private final GridIndex gridIndex;
-    private volatile List<Geofence> zones = new CopyOnWriteArrayList<>();
+    private volatile Map<Long, Geofence> zones = new HashMap<>();
 
     public GeofenceService(GeofenceRepository geofenceRepository, GridIndex gridIndex) {
         this.geofenceRepository = geofenceRepository;
@@ -37,19 +37,23 @@ public class GeofenceService {
      */
     public void reloadZones() {
         List<GeofenceEntity> entities = geofenceRepository.findAll();
-        this.zones = entities.stream()
-                .map(this::toDomain)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toCollection(CopyOnWriteArrayList::new));
-        gridIndex.rebuild(this.zones);
-        log.info("Loaded {} geofence zones, grid rebuilt", zones.size());
+        Map<Long, Geofence> newZones = new HashMap<>();
+        for (GeofenceEntity entity : entities) {
+            Geofence g = toDomain(entity);
+            if (g != null) {
+                newZones.put(g.getId(), g);
+            }
+        }
+        this.zones = newZones;
+        gridIndex.rebuild(new ArrayList<>(newZones.values()));
+        log.info("Loaded {} geofence zones, grid rebuilt", newZones.size());
     }
 
     /**
      * Get all zones.
      */
     public List<Geofence> getAllZones() {
-        return zones;
+        return new ArrayList<>(zones.values());
     }
 
     /**
@@ -63,7 +67,7 @@ public class GeofenceService {
      * Get a zone by ID.
      */
     public Optional<Geofence> getZone(long zoneId) {
-        return zones.stream().filter(z -> z.getId() == zoneId).findFirst();
+        return Optional.ofNullable(zones.get(zoneId));
     }
 
     /**

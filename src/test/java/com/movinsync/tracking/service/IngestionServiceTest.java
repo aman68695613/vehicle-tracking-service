@@ -10,6 +10,7 @@ import com.movinsync.tracking.entity.Vehicle;
 import com.movinsync.tracking.repository.GeofenceEventRepository;
 import com.movinsync.tracking.repository.LocationPingRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -67,9 +68,10 @@ class IngestionServiceTest {
         geofenceEventRepository = mock(GeofenceEventRepository.class);
         etaService = mock(EtaService.class);
         statePersistenceService = mock(StatePersistenceService.class);
+        MeterRegistry meterRegistry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
 
         service = new IngestionService(clock, props, registryService, stateStore, historyWriter,
-                geofenceEngine, geofenceService, geofenceEventRepository, etaService, statePersistenceService);
+                geofenceEngine, geofenceService, geofenceEventRepository, etaService, statePersistenceService, meterRegistry);
 
         // Setup default device mapping
         Vehicle vehicle = new Vehicle();

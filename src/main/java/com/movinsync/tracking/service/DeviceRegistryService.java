@@ -17,7 +17,7 @@ import java.util.Optional;
 public class DeviceRegistryService {
 
     private final DeviceRepository deviceRepository;
-    private final Cache<String, Optional<Device>> deviceCache;
+    private final Cache<String, Optional<DeviceVehicleInfo>> deviceCache;
 
     public DeviceRegistryService(DeviceRepository deviceRepository) {
         this.deviceRepository = deviceRepository;
@@ -31,7 +31,7 @@ public class DeviceRegistryService {
      * Look up the device by deviceId.
      */
     public Optional<Device> findDevice(String deviceId) {
-        return deviceCache.get(deviceId, id -> deviceRepository.findByDeviceId(id));
+        return resolve(deviceId).map(DeviceVehicleInfo::device);
     }
 
     /**
@@ -40,7 +40,7 @@ public class DeviceRegistryService {
     public record DeviceVehicleInfo(Device device, Vehicle vehicle, String businessUnit) {}
 
     public Optional<DeviceVehicleInfo> resolve(String deviceId) {
-        return deviceRepository.findByDeviceId(deviceId)
-                .map(d -> new DeviceVehicleInfo(d, d.getVehicle(), d.getVehicle().getBusinessUnit()));
+        return deviceCache.get(deviceId, id -> deviceRepository.findByDeviceId(id)
+                .map(d -> new DeviceVehicleInfo(d, d.getVehicle(), d.getVehicle().getBusinessUnit())));
     }
 }

@@ -203,7 +203,7 @@ class EntityRepositoryTest {
                 .timestampMs(6000L).status(EventStatus.SENT)
                 .build());
 
-        List<GeofenceEvent> pending = eventRepo.findByStatus(EventStatus.PENDING);
+        List<GeofenceEvent> pending = eventRepo.findByStatus(EventStatus.PENDING, org.springframework.data.domain.Pageable.unpaged());
         assertEquals(1, pending.size());
         assertEquals(GeofenceEventType.ENTRY, pending.get(0).getEventType());
     }

@@ -12,6 +12,8 @@ import com.movinsync.tracking.entity.*;
 import com.movinsync.tracking.repository.GeofenceEventRepository;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -46,6 +48,7 @@ public class IngestionService {
     private final GeofenceEventRepository geofenceEventRepository;
     private final EtaService etaService;
     private final StatePersistenceService statePersistenceService;
+    private final Timer processTimer;
 
     // Striped locks keyed by vehicleId
     private final Lock[] stripedLocks;
@@ -62,7 +65,8 @@ public class IngestionService {
                             GeofenceService geofenceService,
                             GeofenceEventRepository geofenceEventRepository,
                             EtaService etaService,
-                            StatePersistenceService statePersistenceService) {
+                            StatePersistenceService statePersistenceService,
+                            MeterRegistry meterRegistry) {
         this.clock = clock;
         this.props = props;
         this.registryService = registryService;
@@ -73,6 +77,7 @@ public class IngestionService {
         this.geofenceEventRepository = geofenceEventRepository;
         this.etaService = etaService;
         this.statePersistenceService = statePersistenceService;
+        this.processTimer = meterRegistry.timer("ingestion.process.under.lock");
 
         this.stripedLocks = new Lock[props.stripedLockCount()];
         for (int i = 0; i < stripedLocks.length; i++) {
@@ -123,7 +128,7 @@ public class IngestionService {
             Lock lock = stripedLocks[(int) (vehicleId % stripedLocks.length)];
             lock.lock();
             try {
-                return processUnderLock(request, vehicle, vehicleId);
+                return processTimer.record(() -> processUnderLock(request, vehicle, vehicleId));
             } finally {
                 lock.unlock();
             }
