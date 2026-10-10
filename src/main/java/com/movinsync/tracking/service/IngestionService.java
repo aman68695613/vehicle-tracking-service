@@ -44,6 +44,7 @@ public class IngestionService {
     private final GeofenceEngine geofenceEngine;
     private final GeofenceService geofenceService;
     private final GeofenceEventRepository geofenceEventRepository;
+    private final EtaService etaService;
 
     // Striped locks keyed by vehicleId
     private final Lock[] stripedLocks;
@@ -58,7 +59,8 @@ public class IngestionService {
                             HistoryWriter historyWriter,
                             GeofenceEngine geofenceEngine,
                             GeofenceService geofenceService,
-                            GeofenceEventRepository geofenceEventRepository) {
+                            GeofenceEventRepository geofenceEventRepository,
+                            EtaService etaService) {
         this.clock = clock;
         this.props = props;
         this.registryService = registryService;
@@ -67,6 +69,7 @@ public class IngestionService {
         this.geofenceEngine = geofenceEngine;
         this.geofenceService = geofenceService;
         this.geofenceEventRepository = geofenceEventRepository;
+        this.etaService = etaService;
 
         this.stripedLocks = new Lock[props.stripedLockCount()];
         for (int i = 0; i < stripedLocks.length; i++) {
@@ -201,7 +204,10 @@ public class IngestionService {
             state.setNewVehicle(false);
         }
 
-        // 13. Enqueue history and dedup
+        // 13. ETA update
+        etaService.updateEta(newPosition, state, vehicle.getActiveRoute(), gap);
+
+        // 14. Enqueue history and dedup
         enqueueHistory(request, vehicleId);
         dedupCache.put(dedupKey, Boolean.TRUE);
 
