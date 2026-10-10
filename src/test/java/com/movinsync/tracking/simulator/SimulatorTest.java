@@ -55,6 +55,13 @@ public class SimulatorTest {
         List<double[]> points = parsePolyline(polylineJson);
         System.out.println("Parsed " + points.size() + " points from polyline.");
 
+        // Start 4.5 minutes ago to fit the entire simulation (and gaps) within the 5-minute stale window
+        long baseTs = Instant.now().toEpochMilli() - 270_000;
+        long currentTs = baseTs;
+        
+        int pingsSent = 0;
+        boolean gapFired = false;
+
         for (int i = 0; i < points.size() - 1; i++) {
             double[] start = points.get(i);
             double[] end = points.get(i + 1);
@@ -68,47 +75,78 @@ public class SimulatorTest {
                 double lat = start[0] + (end[0] - start[0]) * fraction;
                 double lon = start[1] + (end[1] - start[1]) * fraction;
 
-                long currentTs = Instant.now().toEpochMilli();
-
-                String json = String.format("""
-                        {
-                            "deviceId": "%s",
-                            "ts": %d,
-                            "lat": %f,
-                            "lon": %f,
-                            "accuracy": 5.0,
-                            "speed": %f,
-                            "bearing": 0.0
-                        }
-                        """, DEVICE_ID, currentTs, lat, lon, SPEED_MPS);
-
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create("http://localhost:" + port + "/api/pings"))
-                        .header("Content-Type", "application/json")
-                        .header("X-Device-ID", DEVICE_ID)
-                        .header("X-API-Key", API_KEY)
-                        .POST(HttpRequest.BodyPublishers.ofString(json))
-                        .build();
-
-                HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+                currentTs += 10L; // 10ms increment to keep strictly monotonic
                 
-                assertEquals(200, response.statusCode(), "Ping should be accepted");
-                assertTrue(response.body().contains("\"status\":\"ACCEPTED\""), "Ping should not be rejected, body: " + response.body());
+                // Simulate a gap of > 2 mins just upon entering Koramangala
+                if (haversine(lat, lon, 12.9350, 77.6100) <= 300 && !gapFired) {
+                    currentTs += 150_000; // 2.5 minutes gap
+                    gapFired = true;
+                }
+
+                HttpResponse<String> response = sendPing(lat, lon, currentTs);
+                assertEquals(200, response.statusCode());
+                assertTrue(response.body().contains("\"status\":\"ACCEPTED\""), "Ping rejected! Body: " + response.body());
+                
+                // Simulate Duplicate
+                if (pingsSent == 20) {
+                    HttpResponse<String> dupResp = sendPing(lat, lon, currentTs);
+                    assertTrue(dupResp.body().contains("\"status\":\"DUPLICATE\""));
+                }
+                
+                // Simulate Out-of-Order
+                if (pingsSent == 30) {
+                    HttpResponse<String> lateResp = sendPing(lat, lon, currentTs - 10000); // 10s old
+                    assertTrue(lateResp.body().contains("\"status\":\"OUT_OF_ORDER\""));
+                }
+                
+                pingsSent++;
             }
         }
 
-        // Verify geofence events were generated (e.g. entry into Koramangala and MG Road)
+        // Verify exact geofence events
         List<GeofenceEvent> events = geofenceEventRepository.findAll();
-        System.out.println("Generated " + events.size() + " geofence events.");
         
-        boolean enteredKoramangala = events.stream().anyMatch(e -> e.getEventType() == GeofenceEventType.ENTRY && e.getZoneId() == 1L); // assuming 1L is Koramangala
-        // We just assert that AT LEAST ONE entry event was created during the simulation
-        assertTrue(events.stream().anyMatch(e -> e.getEventType() == GeofenceEventType.ENTRY), "Should have entered at least one geofence");
+        long koramangalaEntries = events.stream().filter(e -> e.getEventType() == GeofenceEventType.ENTRY && e.getZoneId() == 1L).count();
+        long mgRoadEntries = events.stream().filter(e -> e.getEventType() == GeofenceEventType.ENTRY && e.getZoneId() == 2L).count();
+        long koramangalaExits = events.stream().filter(e -> e.getEventType() == GeofenceEventType.EXIT && e.getZoneId() == 1L).count();
+        
+        assertEquals(1, koramangalaEntries, "Should have exactly one ENTRY for Koramangala");
+        assertEquals(1, mgRoadEntries, "Should have exactly one ENTRY for MG Road");
+        assertEquals(1, koramangalaExits, "Should have exactly one EXIT for Koramangala");
+        
+        // Verify gap recovery flag was set on Koramangala ENTRY
+        boolean gapDetected = events.stream()
+                .anyMatch(e -> e.getZoneId() == 1L && e.getEventType() == GeofenceEventType.ENTRY && Boolean.TRUE.equals(e.getDetectedAfterGap()));
+        assertTrue(gapDetected, "Koramangala ENTRY should be marked with detectedAfterGap=true");
 
         // Verify ETAs
-        com.movinsync.tracking.domain.state.VehicleState state = vehicleStateStore.getOrCreate(1L); // assuming vehicle ID is 1L
-        System.out.println("Final ETAs: " + state.getEtaMap());
+        com.movinsync.tracking.domain.state.VehicleState state = vehicleStateStore.getOrCreate(1L);
         assertTrue(!state.getEtaMap().isEmpty(), "ETAs should be calculated and stored in VehicleState");
+        assertTrue(state.getEtaMap().containsKey(3L), "ETA map should contain Koramangala Stop");
+    }
+
+    private HttpResponse<String> sendPing(double lat, double lon, long ts) throws Exception {
+        String json = String.format("""
+                {
+                    "deviceId": "%s",
+                    "ts": %d,
+                    "lat": %f,
+                    "lon": %f,
+                    "accuracy": 5.0,
+                    "speed": %f,
+                    "bearing": 0.0
+                }
+                """, DEVICE_ID, ts, lat, lon, SPEED_MPS);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + port + "/api/pings"))
+                .header("Content-Type", "application/json")
+                .header("X-Device-ID", DEVICE_ID)
+                .header("X-API-Key", API_KEY)
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+
+        return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     private static List<double[]> parsePolyline(String json) {

@@ -36,4 +36,16 @@ public class JwtService {
                 .parseSignedClaims(token)
                 .getPayload();
     }
+    /**
+     * Generates a JWT token for a given username and role.
+     */
+    public String generateToken(String username, String role) {
+        return Jwts.builder()
+                .subject(username)
+                .claim("role", role)
+                .issuedAt(new java.util.Date())
+                .expiration(new java.util.Date(System.currentTimeMillis() + 86400000)) // 24 hours
+                .signWith(key)
+                .compact();
+    }
 }

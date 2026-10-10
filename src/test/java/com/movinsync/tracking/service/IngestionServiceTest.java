@@ -60,9 +60,9 @@ class IngestionServiceTest {
 
         registryService = mock(DeviceRegistryService.class);
         LocationPingRepository pingRepo = mock(LocationPingRepository.class);
-        historyWriter = new HistoryWriter(pingRepo, new SimpleMeterRegistry());
+        historyWriter = spy(new HistoryWriter(pingRepo, new SimpleMeterRegistry()));
         stateStore = new VehicleStateStore();
-        geofenceEngine = new GeofenceEngine(props);
+        geofenceEngine = spy(new GeofenceEngine(props));
         geofenceService = mock(GeofenceService.class);
         when(geofenceService.candidates(any())).thenReturn(Collections.emptyList());
         geofenceEventRepository = mock(GeofenceEventRepository.class);
@@ -90,6 +90,9 @@ class IngestionServiceTest {
 
         when(registryService.resolve("DEV-001"))
                 .thenReturn(Optional.of(new DeviceRegistryService.DeviceVehicleInfo(device, vehicle, "BU-TEST")));
+
+        when(etaService.updateEta(any(), any(), any(), anyBoolean()))
+                .thenReturn(new EtaService.EtaUpdateResult(new java.util.HashMap<>(), 0));
     }
 
     private PingRequest ping(long ts) {
@@ -208,6 +211,95 @@ class IngestionServiceTest {
         // Second ping after a gap > 2 min (gap threshold = 120s)
         PingResult result = service.processPing(ping(NOW_MS - 1000)); // recent
         // Gap should be detected but ping still accepted
+        assertEquals(PingStatus.ACCEPTED, result.status());
+    }
+    @Test
+    void dbFailure_throwsServiceUnavailableAndDiscardsState() {
+        // Mock geofenceEngine to return a transition
+        com.movinsync.tracking.domain.state.ZoneTransition transition = new com.movinsync.tracking.domain.state.ZoneTransition(1L, com.movinsync.tracking.entity.GeofenceEventType.ENTRY, false);
+        com.movinsync.tracking.service.GeofenceEngine.EvaluationResult evalResult =
+                new com.movinsync.tracking.service.GeofenceEngine.EvaluationResult(
+                        java.util.List.of(transition), java.util.Map.of(1L, true));
+                        
+        geofenceEngine = mock(GeofenceEngine.class);
+        when(geofenceEngine.evaluate(any(), anyLong(), anyLong(), any(), any(), anyBoolean())).thenReturn(evalResult);
+
+        // Replace service with the mocked geofence engine and a failing tx template
+        org.springframework.transaction.support.TransactionTemplate txTemplate = mock(org.springframework.transaction.support.TransactionTemplate.class);
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("DB Error"))
+                .when(txTemplate).executeWithoutResult(any());
+
+        service = new IngestionService(clock, props, registryService, stateStore, historyWriter,
+                geofenceEngine, geofenceService, geofenceEventRepository, etaService, statePersistenceService, new SimpleMeterRegistry(), txTemplate);
+
+        PingRequest req = ping(NOW_MS - 1000);
+        assertThrows(com.movinsync.tracking.exception.ServiceUnavailableException.class, () -> service.processPing(req));
+        
+        // Ensure state was NOT committed
+        com.movinsync.tracking.domain.state.VehicleState state = stateStore.getOrCreate(1L);
+        assertNull(state.getLastPosition()); // Should be unchanged
+    }
+
+    @Test
+    void concurrency_handlesConcurrentPings() throws InterruptedException {
+        int threadCount = 50;
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(10);
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(threadCount);
+        java.util.concurrent.atomic.AtomicInteger exceptions = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+
+        for (int i = 0; i < threadCount; i++) {
+            final int index = i;
+            executor.submit(() -> {
+                try {
+                    PingResult res = service.processPing(ping(NOW_MS - 100000 + index * 1000));
+                    if (res.status() == PingStatus.ACCEPTED) accepted.incrementAndGet();
+                } catch (Exception e) {
+                    exceptions.incrementAndGet();
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+        boolean completed = latch.await(10, java.util.concurrent.TimeUnit.SECONDS);
+        assertTrue(completed, "Latch timed out");
+        assertEquals(0, exceptions.get(), "Exceptions thrown during concurrent execution");
+        
+        com.movinsync.tracking.domain.state.VehicleState state = stateStore.getOrCreate(1L);
+        assertNotNull(state.getLastPosition());
+        assertEquals(NOW_MS - 100000 + 49 * 1000, state.getLastTimestampMs());
+        
+        // Out-of-order pings are stored as history only, so total history writer calls = 50
+        verify(historyWriter, times(50)).enqueue(any());
+    }
+
+    @Test
+    void gap_detectsGapCorrectly() {
+        // Send first ping
+        service.processPing(ping(NOW_MS - 200000));
+        
+        // Mock geofence engine to capture the gap flag
+        org.mockito.ArgumentCaptor<Boolean> gapCaptor = org.mockito.ArgumentCaptor.forClass(Boolean.class);
+        
+        // Send second ping with >2 min gap
+        service.processPing(ping(NOW_MS - 10000));
+        
+        verify(geofenceEngine, times(2)).evaluate(any(), anyLong(), anyLong(), any(), any(), gapCaptor.capture());
+        
+        // First ping gap=false, second ping gap=true
+        assertFalse(gapCaptor.getAllValues().get(0));
+        assertTrue(gapCaptor.getAllValues().get(1));
+    }
+
+    @Test
+    void queueFull_dropsHistoryButAcceptsPing() throws Exception {
+        // Fill the HistoryWriter queue
+        for (int i = 0; i < 11000; i++) {
+            historyWriter.enqueue(new com.movinsync.tracking.entity.LocationPing());
+        }
+        
+        // Sending a new ping should still be ACCEPTED, even if queue is full
+        PingResult result = service.processPing(ping(NOW_MS - 1000));
         assertEquals(PingStatus.ACCEPTED, result.status());
     }
 }

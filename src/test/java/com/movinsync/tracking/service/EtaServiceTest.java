@@ -39,6 +39,7 @@ class EtaServiceTest {
 
         route = new Route();
         route.setId(1L);
+        route.setPolylineJson("[[12.930, 77.610], [12.935, 77.610], [12.940, 77.610], [12.945, 77.610]]");
         List<RouteStop> stops = new ArrayList<>();
         stops.add(makeStop(1L, 0, 12.930, 77.610, 0.0));
         stops.add(makeStop(2L, 1, 12.935, 77.610, 556.0));
@@ -59,39 +60,45 @@ class EtaServiceTest {
         return s;
     }
 
+    private List<EtaService.PolylinePoint> toPolylinePoints(List<RouteStop> stops) {
+        return stops.stream()
+                .map(s -> new EtaService.PolylinePoint(new GeoPoint(s.getLatitude(), s.getLongitude()), s.getCumulativeDistanceMetres()))
+                .toList();
+    }
+
     @Test
     void snapToRoute_atFirstStop() {
-        List<RouteStop> stops = route.getStops();
+        List<EtaService.PolylinePoint> points = toPolylinePoints(route.getStops());
         EtaService.SnapResult snap = etaService.snapToRoute(
-                new GeoPoint(12.930, 77.610), stops, 0);
+                new GeoPoint(12.930, 77.610), points, 0);
         assertEquals(0, snap.segmentIndex());
         assertEquals(0.0, snap.cumulativeDistance(), 1.0);
     }
 
     @Test
     void snapToRoute_midway() {
-        List<RouteStop> stops = route.getStops();
+        List<EtaService.PolylinePoint> points = toPolylinePoints(route.getStops());
         // Point midway between stop 0 and stop 1
         EtaService.SnapResult snap = etaService.snapToRoute(
-                new GeoPoint(12.9325, 77.610), stops, 0);
+                new GeoPoint(12.9325, 77.610), points, 0);
         assertEquals(0, snap.segmentIndex());
         assertEquals(278.0, snap.cumulativeDistance(), 10.0); // ~halfway of 556
     }
 
     @Test
     void snapToRoute_atLastStop() {
-        List<RouteStop> stops = route.getStops();
+        List<EtaService.PolylinePoint> points = toPolylinePoints(route.getStops());
         EtaService.SnapResult snap = etaService.snapToRoute(
-                new GeoPoint(12.945, 77.610), stops, 0);
+                new GeoPoint(12.945, 77.610), points, 0);
         assertEquals(1668.0, snap.cumulativeDistance(), 10.0);
     }
 
     @Test
     void snapToRoute_offRoute() {
-        List<RouteStop> stops = route.getStops();
+        List<EtaService.PolylinePoint> points = toPolylinePoints(route.getStops());
         // Point 1km east of the route
         EtaService.SnapResult snap = etaService.snapToRoute(
-                new GeoPoint(12.935, 77.620), stops, 0);
+                new GeoPoint(12.935, 77.620), points, 0);
         // Should still snap to nearest segment
         assertTrue(snap.distanceToRoute() > 500);
         assertEquals(556.0, snap.cumulativeDistance(), 20.0);
@@ -103,7 +110,10 @@ class EtaServiceTest {
         state.setSpeedEma(10.0); // 10 m/s
 
         // Vehicle at stop 0
-        etaService.updateEta(new GeoPoint(12.930, 77.610), state, route, false);
+        var res = etaService.updateEta(new GeoPoint(12.930, 77.610), state, route, false);
+        state.getEtaMap().clear();
+        state.getEtaMap().putAll(res.etaMap());
+        state.setLastSnappedIndex(res.snappedIndex());
 
         // All stops should have ETAs
         assertEquals(4, state.getEtaMap().size());
@@ -125,7 +135,10 @@ class EtaServiceTest {
         state.setSpeedEma(10.0);
 
         // Vehicle past stop 1 (between stop 1 and stop 2)
-        etaService.updateEta(new GeoPoint(12.937, 77.610), state, route, false);
+        var res2 = etaService.updateEta(new GeoPoint(12.937, 77.610), state, route, false);
+        state.getEtaMap().clear();
+        state.getEtaMap().putAll(res2.etaMap());
+        state.setLastSnappedIndex(res2.snappedIndex());
 
         // Stop 0 (cumDist=0) should be PASSED
         VehicleState.EtaEntry e0 = state.getEtaMap().get(1L);
@@ -145,7 +158,10 @@ class EtaServiceTest {
         VehicleState state = new VehicleState(1L);
         state.setSpeedEma(0.5); // very slow, below floor
 
-        etaService.updateEta(new GeoPoint(12.930, 77.610), state, route, false);
+        var res = etaService.updateEta(new GeoPoint(12.930, 77.610), state, route, false);
+        state.getEtaMap().clear();
+        state.getEtaMap().putAll(res.etaMap());
+        state.setLastSnappedIndex(res.snappedIndex());
 
         // ETA should use minSpeed (2.0 m/s) not 0.5
         VehicleState.EtaEntry e3 = state.getEtaMap().get(4L);
@@ -159,11 +175,17 @@ class EtaServiceTest {
         state.setSpeedEma(10.0);
 
         // First update: publishes
-        etaService.updateEta(new GeoPoint(12.930, 77.610), state, route, false);
+        var res = etaService.updateEta(new GeoPoint(12.930, 77.610), state, route, false);
+        state.getEtaMap().clear();
+        state.getEtaMap().putAll(res.etaMap());
+        state.setLastSnappedIndex(res.snappedIndex());
         double firstEta = state.getEtaMap().get(4L).lastPublishedEtaSeconds();
 
         // Second update with very similar position (tiny change)
-        etaService.updateEta(new GeoPoint(12.9301, 77.610), state, route, false);
+        var res3 = etaService.updateEta(new GeoPoint(12.9301, 77.610), state, route, false);
+        state.getEtaMap().clear();
+        state.getEtaMap().putAll(res3.etaMap());
+        state.setLastSnappedIndex(res3.snappedIndex());
         double secondPublished = state.getEtaMap().get(4L).lastPublishedEtaSeconds();
 
         // Change is < 15s so published value should stay the same

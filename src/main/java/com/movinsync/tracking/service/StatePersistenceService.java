@@ -107,6 +107,9 @@ public class StatePersistenceService {
             snapshot.setEtaMapJson(objectMapper.writeValueAsString(etaMap));
             
             snapshotRepository.save(snapshot);
+        } catch (org.springframework.dao.DataAccessException e) {
+            log.error("Database failure while saving snapshot for vehicle={}", vehicleId, e);
+            throw e;
         } catch (Exception e) {
             log.error("Failed to save snapshot for vehicle={}", vehicleId, e);
             throw new RuntimeException("Snapshot DB failure", e);

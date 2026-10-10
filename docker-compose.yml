@@ -2,6 +2,7 @@ services:
   postgres:
     image: postgres:16
     container_name: vehicle-tracking-db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: vehicle_tracking
       POSTGRES_USER: postgres
@@ -15,5 +16,19 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  app:
+    build: .
+    container_name: vehicle-tracking-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/vehicle_tracking
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - DB_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "8081:8080"
 volumes:
   pgdata:

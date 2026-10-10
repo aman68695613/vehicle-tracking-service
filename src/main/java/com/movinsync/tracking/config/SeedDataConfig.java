@@ -70,17 +70,17 @@ public class SeedDataConfig {
 
             RouteStop stop2 = routeStopRepo.save(RouteStop.builder()
                     .route(route).sequenceIndex(1).name("Silk Board Junction")
-                    .latitude(12.9170).longitude(77.6230).cumulativeDistanceMetres(10200.0)
+                    .latitude(12.9170).longitude(77.6230).cumulativeDistanceMetres(11376.0)
                     .build());
 
             RouteStop stop3 = routeStopRepo.save(RouteStop.builder()
                     .route(route).sequenceIndex(2).name("Koramangala Pickup")
-                    .latitude(12.9350).longitude(77.6100).cumulativeDistanceMetres(12500.0)
+                    .latitude(12.9350).longitude(77.6100).cumulativeDistanceMetres(13824.0)
                     .build());
 
             RouteStop stop4 = routeStopRepo.save(RouteStop.builder()
                     .route(route).sequenceIndex(3).name("MG Road Office")
-                    .latitude(12.9716).longitude(77.6095).cumulativeDistanceMetres(16600.0)
+                    .latitude(12.9716).longitude(77.6095).cumulativeDistanceMetres(18028.0)
                     .build());
 
             // ---- Vehicle ----

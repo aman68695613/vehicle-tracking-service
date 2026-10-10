@@ -29,7 +29,8 @@ public class PingController {
             @org.springframework.web.bind.annotation.RequestHeader(value = "X-Device-ID", required = false) String headerDeviceId,
             @Valid @RequestBody PingRequest request) {
         
-        if (headerDeviceId != null && !headerDeviceId.equals(request.deviceId())) {
+        java.security.Principal principal = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (principal == null || !("DEVICE_" + request.deviceId()).equals(principal.getName())) {
             return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
         }
             

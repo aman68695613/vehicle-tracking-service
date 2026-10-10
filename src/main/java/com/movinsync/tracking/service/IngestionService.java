@@ -196,7 +196,10 @@ public class IngestionService {
         GeofenceEngine.EvaluationResult evalResult = geofenceEngine.evaluate(
                 newPosition, request.ts(), vehicleId, state, candidates, gap);
 
-        // 12. Persist-then-commit: persist transitions in DB, then commit to memory
+        // 12. ETA update (compute new values without mutating state yet)
+        var etaResult = etaService.updateEta(newPosition, state, vehicle.getActiveRoute(), gap);
+
+        // 13. Persist-then-commit: persist transitions in DB, then commit zone states to memory
         if (!evalResult.transitions().isEmpty()) {
             try {
                 // Determine the new zone states map to persist in the snapshot
@@ -205,7 +208,7 @@ public class IngestionService {
 
                 transactionTemplate.executeWithoutResult(status -> {
                     persistTransitionsAndState(evalResult.transitions(), vehicleId, request.ts(),
-                            newPosition, speed, state.getLastSnappedIndex(), newZoneStates, state.getEtaMap());
+                            newPosition, newSpeedEma, etaResult.snappedIndex(), newZoneStates, etaResult.etaMap());
                 });
             } catch (DataAccessException ex) {
                 // DB failure: discard new state, return 503
@@ -214,17 +217,17 @@ public class IngestionService {
             }
         }
 
-        // Commit to memory only after DB success
+        // Commit remaining memory state only after DB success
         state.setSpeedEma(newSpeedEma);
         state.getZoneStates().putAll(evalResult.newZoneStates());
         state.setLastPosition(newPosition);
         state.setLastTimestampMs(request.ts());
+        state.setLastSnappedIndex(etaResult.snappedIndex());
+        state.getEtaMap().clear();
+        state.getEtaMap().putAll(etaResult.etaMap());
         if (state.isNewVehicle()) {
             state.setNewVehicle(false);
         }
-
-        // 13. ETA update
-        etaService.updateEta(newPosition, state, vehicle.getActiveRoute(), gap);
 
         // 14. Enqueue history and dedup
         enqueueHistory(request, vehicleId);
