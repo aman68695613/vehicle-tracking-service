@@ -166,14 +166,13 @@ public class IngestionService {
         // 11. Geofence evaluation
         GeoPoint newPosition = new GeoPoint(request.lat(), request.lon());
 
-        // Candidates = all zones (naive scan; grid index added in step 6)
-        // ∪ zones currently INSIDE (so EXIT can fire even if grid misses)
+        // Grid-based O(1) candidate lookup ∪ zones currently INSIDE
         Set<Long> insideZoneIds = new HashSet<>();
         for (Map.Entry<Long, Boolean> e : state.getZoneStates().entrySet()) {
             if (Boolean.TRUE.equals(e.getValue())) insideZoneIds.add(e.getKey());
         }
-        List<Geofence> candidates = new ArrayList<>(geofenceService.getAllZones());
-        // Ensure inside zones are in the candidate list (they may already be)
+        List<Geofence> candidates = new ArrayList<>(geofenceService.candidates(newPosition));
+        // Ensure inside zones are in the candidate list (so EXIT can fire)
         for (Long zid : insideZoneIds) {
             if (candidates.stream().noneMatch(z -> z.getId() == zid)) {
                 geofenceService.getZone(zid).ifPresent(candidates::add);

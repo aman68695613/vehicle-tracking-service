@@ -23,10 +23,12 @@ public class GeofenceService {
     private static final Logger log = LoggerFactory.getLogger(GeofenceService.class);
 
     private final GeofenceRepository geofenceRepository;
+    private final GridIndex gridIndex;
     private volatile List<Geofence> zones = new CopyOnWriteArrayList<>();
 
-    public GeofenceService(GeofenceRepository geofenceRepository) {
+    public GeofenceService(GeofenceRepository geofenceRepository, GridIndex gridIndex) {
         this.geofenceRepository = geofenceRepository;
+        this.gridIndex = gridIndex;
         reloadZones();
     }
 
@@ -39,14 +41,22 @@ public class GeofenceService {
                 .map(this::toDomain)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(CopyOnWriteArrayList::new));
-        log.info("Loaded {} geofence zones", zones.size());
+        gridIndex.rebuild(this.zones);
+        log.info("Loaded {} geofence zones, grid rebuilt", zones.size());
     }
 
     /**
-     * Get all zones (for naive scan until grid index is added in step 6).
+     * Get all zones.
      */
     public List<Geofence> getAllZones() {
         return zones;
+    }
+
+    /**
+     * Grid-based candidate lookup: O(1) per point.
+     */
+    public List<Geofence> candidates(GeoPoint point) {
+        return gridIndex.candidates(point);
     }
 
     /**

@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
@@ -60,7 +61,7 @@ class IngestionServiceTest {
         stateStore = new VehicleStateStore();
         geofenceEngine = new GeofenceEngine(props);
         geofenceService = mock(GeofenceService.class);
-        when(geofenceService.getAllZones()).thenReturn(Collections.emptyList());
+        when(geofenceService.candidates(any())).thenReturn(Collections.emptyList());
         geofenceEventRepository = mock(GeofenceEventRepository.class);
 
         service = new IngestionService(clock, props, registryService, stateStore, historyWriter,
