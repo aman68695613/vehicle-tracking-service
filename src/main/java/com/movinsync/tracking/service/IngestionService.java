@@ -1,22 +1,27 @@
 package com.movinsync.tracking.service;
 
 import com.movinsync.tracking.config.TrackingProperties;
+import com.movinsync.tracking.domain.geo.Geofence;
 import com.movinsync.tracking.domain.geo.GeoPoint;
 import com.movinsync.tracking.domain.state.PingResult;
 import com.movinsync.tracking.domain.state.VehicleState;
 import com.movinsync.tracking.domain.state.VehicleStateStore;
+import com.movinsync.tracking.domain.state.ZoneTransition;
 import com.movinsync.tracking.dto.request.PingRequest;
-import com.movinsync.tracking.entity.LocationPing;
-import com.movinsync.tracking.entity.Vehicle;
+import com.movinsync.tracking.entity.*;
+import com.movinsync.tracking.repository.GeofenceEventRepository;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -36,6 +41,9 @@ public class IngestionService {
     private final DeviceRegistryService registryService;
     private final VehicleStateStore stateStore;
     private final HistoryWriter historyWriter;
+    private final GeofenceEngine geofenceEngine;
+    private final GeofenceService geofenceService;
+    private final GeofenceEventRepository geofenceEventRepository;
 
     // Striped locks keyed by vehicleId
     private final Lock[] stripedLocks;
@@ -47,12 +55,18 @@ public class IngestionService {
                             TrackingProperties props,
                             DeviceRegistryService registryService,
                             VehicleStateStore stateStore,
-                            HistoryWriter historyWriter) {
+                            HistoryWriter historyWriter,
+                            GeofenceEngine geofenceEngine,
+                            GeofenceService geofenceService,
+                            GeofenceEventRepository geofenceEventRepository) {
         this.clock = clock;
         this.props = props;
         this.registryService = registryService;
         this.stateStore = stateStore;
         this.historyWriter = historyWriter;
+        this.geofenceEngine = geofenceEngine;
+        this.geofenceService = geofenceService;
+        this.geofenceEventRepository = geofenceEventRepository;
 
         this.stripedLocks = new Lock[props.stripedLockCount()];
         for (int i = 0; i < stripedLocks.length; i++) {
@@ -149,19 +163,51 @@ public class IngestionService {
             state.setSpeedEma(speed);
         }
 
-        // 11. Commit new state
+        // 11. Geofence evaluation
         GeoPoint newPosition = new GeoPoint(request.lat(), request.lon());
+
+        // Candidates = all zones (naive scan; grid index added in step 6)
+        // ∪ zones currently INSIDE (so EXIT can fire even if grid misses)
+        Set<Long> insideZoneIds = new HashSet<>();
+        for (Map.Entry<Long, Boolean> e : state.getZoneStates().entrySet()) {
+            if (Boolean.TRUE.equals(e.getValue())) insideZoneIds.add(e.getKey());
+        }
+        List<Geofence> candidates = new ArrayList<>(geofenceService.getAllZones());
+        // Ensure inside zones are in the candidate list (they may already be)
+        for (Long zid : insideZoneIds) {
+            if (candidates.stream().noneMatch(z -> z.getId() == zid)) {
+                geofenceService.getZone(zid).ifPresent(candidates::add);
+            }
+        }
+
+        GeofenceEngine.EvaluationResult evalResult = geofenceEngine.evaluate(
+                newPosition, request.ts(), vehicleId, state, candidates, gap);
+
+        // 12. Persist-then-commit: persist transitions in DB, then commit to memory
+        if (!evalResult.transitions().isEmpty()) {
+            try {
+                persistTransitions(evalResult.transitions(), vehicleId, request.ts());
+            } catch (DataAccessException ex) {
+                // DB failure: discard new state, return 503
+                log.error("DB failure during geofence transition persist for vehicle={}", vehicleId);
+                throw ex; // will be caught by exception handler as 503
+            }
+        }
+
+        // Commit to memory only after DB success
+        state.getZoneStates().putAll(evalResult.newZoneStates());
         state.setLastPosition(newPosition);
         state.setLastTimestampMs(request.ts());
         if (state.isNewVehicle()) {
             state.setNewVehicle(false);
         }
 
-        // 12. Enqueue history and dedup
+        // 13. Enqueue history and dedup
         enqueueHistory(request, vehicleId);
         dedupCache.put(dedupKey, Boolean.TRUE);
 
-        log.debug("Accepted ping: ts={} gap={}", request.ts(), gap);
+        log.debug("Accepted ping: ts={} gap={} transitions={}", request.ts(), gap,
+                evalResult.transitions().size());
         return PingResult.accepted();
     }
 
@@ -192,5 +238,20 @@ public class IngestionService {
                 .speed(request.speed())
                 .bearing(request.bearing())
                 .build());
+    }
+
+    @Transactional
+    protected void persistTransitions(List<ZoneTransition> transitions, long vehicleId, long pingTs) {
+        for (ZoneTransition t : transitions) {
+            GeofenceEvent event = GeofenceEvent.builder()
+                    .eventType(t.type())
+                    .vehicleId(vehicleId)
+                    .zoneId(t.zoneId())
+                    .timestampMs(pingTs)
+                    .detectedAfterGap(t.detectedAfterGap())
+                    .status(EventStatus.PENDING)
+                    .build();
+            geofenceEventRepository.save(event);
+        }
     }
 }

@@ -7,6 +7,7 @@ import com.movinsync.tracking.domain.state.VehicleStateStore;
 import com.movinsync.tracking.dto.request.PingRequest;
 import com.movinsync.tracking.entity.Device;
 import com.movinsync.tracking.entity.Vehicle;
+import com.movinsync.tracking.repository.GeofenceEventRepository;
 import com.movinsync.tracking.repository.LocationPingRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Collections;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -33,6 +35,9 @@ class IngestionServiceTest {
     private DeviceRegistryService registryService;
     private VehicleStateStore stateStore;
     private HistoryWriter historyWriter;
+    private GeofenceEngine geofenceEngine;
+    private GeofenceService geofenceService;
+    private GeofenceEventRepository geofenceEventRepository;
     private IngestionService service;
 
     @BeforeEach
@@ -53,8 +58,13 @@ class IngestionServiceTest {
         LocationPingRepository pingRepo = mock(LocationPingRepository.class);
         historyWriter = new HistoryWriter(pingRepo, new SimpleMeterRegistry());
         stateStore = new VehicleStateStore();
+        geofenceEngine = new GeofenceEngine(props);
+        geofenceService = mock(GeofenceService.class);
+        when(geofenceService.getAllZones()).thenReturn(Collections.emptyList());
+        geofenceEventRepository = mock(GeofenceEventRepository.class);
 
-        service = new IngestionService(clock, props, registryService, stateStore, historyWriter);
+        service = new IngestionService(clock, props, registryService, stateStore, historyWriter,
+                geofenceEngine, geofenceService, geofenceEventRepository);
 
         // Setup default device mapping
         Vehicle vehicle = new Vehicle();
