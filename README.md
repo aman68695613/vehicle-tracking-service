@@ -4,6 +4,94 @@ A high-performance, real-time vehicle tracking backend service built with Spring
 
 ## Architecture & Design Decisions
 
+### Entity-Relationship Diagram
+```mermaid
+erDiagram
+    VEHICLE {
+        Long id PK
+        String registrationNumber
+        String businessUnit
+        Long active_route_id FK
+    }
+    DEVICE {
+        Long id PK
+        String deviceId
+        String apiKeyHash
+        Long vehicle_id FK
+    }
+    ROUTE {
+        Long id PK
+        String name
+        String polylineJson
+    }
+    ROUTE_STOP {
+        Long id PK
+        Integer sequenceIndex
+        String name
+        Double latitude
+        Double longitude
+        Double cumulativeDistanceMetres
+        Long route_id FK
+    }
+    GEOFENCE_ENTITY {
+        Long id PK
+        String name
+        String shape
+        String purpose
+        Double centreLat
+        Double centreLon
+        Double radiusMetres
+        Long stop_id FK
+    }
+    GEOFENCE_EVENT {
+        Long id PK
+        Long vehicleId FK
+        Long zoneId FK
+        String eventType
+        Long timestampMs
+        String status
+    }
+    LOCATION_PING {
+        Long id PK
+        String deviceId
+        Long vehicleId FK
+        Long timestampMs
+        Double lat
+        Double lon
+        Double speed
+    }
+    VEHICLE_STATE_SNAPSHOT {
+        Long vehicleId PK
+        Long lastTimestampMs
+        Double lastLat
+        Double lastLon
+        String zoneStatesJson
+        String etasJson
+    }
+    APP_USER {
+        Long id PK
+        String username
+        String role
+    }
+    PICKUP_REQUEST {
+        Long id PK
+        Long employee_id FK
+        Long route_stop_id FK
+        Boolean active
+    }
+
+    VEHICLE ||--o| DEVICE : "has"
+    VEHICLE }|--|| ROUTE : "active route"
+    ROUTE ||--|{ ROUTE_STOP : "contains"
+    GEOFENCE_ENTITY ||--o| ROUTE_STOP : "can map to"
+    VEHICLE ||--o{ LOCATION_PING : "generates"
+    VEHICLE ||--o{ GEOFENCE_EVENT : "triggers"
+    GEOFENCE_ENTITY ||--o{ GEOFENCE_EVENT : "recorded in"
+    APP_USER ||--o{ PICKUP_REQUEST : "makes"
+    ROUTE_STOP ||--o{ PICKUP_REQUEST : "pickup location"
+    VEHICLE ||--o| VEHICLE_STATE_SNAPSHOT : "state persists in"
+```
+
 ### In-Memory State & Fast Ingestion
 To handle high-throughput location updates without overloading the database, the service maintains live state in memory (`VehicleStateStore`).
 - **Ping Pipeline:** Pings are ingested, deduplicated, and validated in memory.
