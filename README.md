@@ -408,16 +408,28 @@ Test coverage includes:
 The Postman collection complements automated tests by exercising the running REST API.
 ## 15. Demo Video
 
-### Explore the API with Postman
+### Explore with Postman
 
-To explore and test the full API structure, import the included collection into Postman:
+Two Postman collections are included at the root of this repository:
+
+| Collection file | Purpose |
+|---|---|
+| `postman_collection.json` | **API structure reference** — covers every endpoint with correct headers, auth, and request bodies. Use this to explore and manually test individual endpoints. |
+| `MoveInSync_Live_Vehicle_Tracking_Demo.postman_collection` | **Demo workflow** — a scripted, ordered run that simulates a real cab journey and exercises the full pipeline end-to-end. The demo video is based on this collection. |
+
+#### To explore the API structure
 
 1. Open Postman.
-2. Click **Import**.
-3. Select the file `postman_collection.json` from the root of this repository.
-4. The collection **"MoveInSync – Live Vehicle Tracking Demo"** will appear in your sidebar.
-5. Set the `baseUrl` collection variable to `http://localhost:8080` if it is not already set.
-6. Run the requests in the order listed below.
+2. Click **Import** and select `postman_collection.json` from the repository root.
+3. Set the `baseUrl` collection variable to `http://localhost:8080`.
+4. Run any request individually to inspect the request format and response.
+
+#### To run the demo workflow
+
+1. Open Postman.
+2. Click **Import** and select `MoveInSync_Live_Vehicle_Tracking_Demo.postman_collection` from the repository root.
+3. Set the `baseUrl` collection variable to `http://localhost:8080`.
+4. Run the requests **in the order listed in the table below** — each step builds on the previous one.
 
 ---
 
