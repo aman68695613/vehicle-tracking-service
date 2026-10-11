@@ -9,6 +9,7 @@ import com.movinsync.tracking.domain.geo.GeoPoint;
 import com.movinsync.tracking.domain.geo.GeoUtils;
 import java.util.List;
 import java.util.ArrayList;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 @RequestMapping("/api/routes")
@@ -35,6 +36,7 @@ public class RouteController {
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
+    @Transactional(readOnly = true)
     public ResponseEntity<Object> getRoutes() {
         return ResponseEntity.ok(routeRepository.findAll().stream().map(this::toDTO).toList());
     }

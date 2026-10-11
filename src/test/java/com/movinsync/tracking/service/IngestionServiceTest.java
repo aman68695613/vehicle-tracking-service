@@ -153,8 +153,8 @@ class IngestionServiceTest {
         service.processPing(ping(NOW_MS - 1000));
         PingResult result = service.processPing(ping(NOW_MS - 3000));
         assertEquals(PingStatus.OUT_OF_ORDER, result.status());
-        // The out-of-order ping should still be enqueued for history
-        // (verified by the fact that enqueue was called, not that it throws)
+        // Both pings must be written to history — the in-order one AND the out-of-order one
+        verify(historyWriter, times(2)).enqueue(any());
     }
 
     @Test
@@ -194,6 +194,9 @@ class IngestionServiceTest {
         PingRequest noSpeed = new PingRequest("DEV-001", 12.936, 77.611, null, 90.0, NOW_MS - 5000);
         PingResult result = service.processPing(noSpeed);
         assertEquals(PingStatus.ACCEPTED, result.status());
+        // Derived speed must be positive (moved ~145m in 5s ≈ 29 m/s)
+        com.movinsync.tracking.domain.state.VehicleState state = stateStore.getOrCreate(1L);
+        assertTrue(state.getSpeedEma() > 0, "Expected positive EMA speed after deriving from last fix");
     }
 
     @Test
