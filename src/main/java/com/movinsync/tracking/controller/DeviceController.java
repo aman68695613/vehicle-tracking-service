@@ -16,11 +16,14 @@ public class DeviceController {
 
     private final com.movinsync.tracking.service.DeviceRegistryService deviceService;
     private final com.movinsync.tracking.repository.DeviceRepository deviceRepository;
+    private final com.movinsync.tracking.repository.VehicleRepository vehicleRepository;
 
     public DeviceController(com.movinsync.tracking.service.DeviceRegistryService deviceService,
-                            com.movinsync.tracking.repository.DeviceRepository deviceRepository) {
+                            com.movinsync.tracking.repository.DeviceRepository deviceRepository,
+                            com.movinsync.tracking.repository.VehicleRepository vehicleRepository) {
         this.deviceService = deviceService;
         this.deviceRepository = deviceRepository;
+        this.vehicleRepository = vehicleRepository;
     }
 
     /** Safe DTO — never exposes apiKeyHash or vehicle back-reference */
@@ -54,6 +57,13 @@ public class DeviceController {
             return ResponseEntity.badRequest().body("vehicleId is required");
         }
 
+        // Verify vehicle exists — prevents FK violation 500
+        com.movinsync.tracking.entity.Vehicle vehicle = vehicleRepository.findById(request.vehicleId())
+                .orElse(null);
+        if (vehicle == null) {
+            return ResponseEntity.status(404).body("Vehicle not found: " + request.vehicleId());
+        }
+
         // Hash the API key server-side — never store plaintext
         String keyHash;
         try {
@@ -63,9 +73,6 @@ public class DeviceController {
         } catch (NoSuchAlgorithmException e) {
             return ResponseEntity.internalServerError().body("SHA-256 unavailable");
         }
-
-        com.movinsync.tracking.entity.Vehicle vehicle = new com.movinsync.tracking.entity.Vehicle();
-        vehicle.setId(request.vehicleId());
 
         com.movinsync.tracking.entity.Device device = com.movinsync.tracking.entity.Device.builder()
                 .deviceId(request.deviceId())

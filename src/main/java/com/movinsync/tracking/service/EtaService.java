@@ -42,7 +42,7 @@ public class EtaService {
      */
     public EtaUpdateResult updateEta(GeoPoint position, VehicleState state, Route route, boolean gap) {
         if (route == null || route.getStops() == null || route.getStops().isEmpty()) {
-            return new EtaUpdateResult(Map.copyOf(state.getEtaMap()), state.getLastSnappedIndex());
+            return new EtaUpdateResult(new java.util.HashMap<>(state.getEtaMap()), state.getLastSnappedIndex());
         }
 
         List<RouteStop> stops = route.getStops().stream()
@@ -50,7 +50,7 @@ public class EtaService {
                 .toList();
 
         if (stops.size() < 2) {
-            return new EtaUpdateResult(Map.copyOf(state.getEtaMap()), state.getLastSnappedIndex());
+            return new EtaUpdateResult(new java.util.HashMap<>(state.getEtaMap()), state.getLastSnappedIndex());
         }
 
         // 1. Parse polyline and snap to route (cached)
@@ -58,7 +58,7 @@ public class EtaService {
                 id -> parsePolyline(route.getPolylineJson()));
                 
         if (polyline.size() < 2) {
-            return new EtaUpdateResult(Map.copyOf(state.getEtaMap()), state.getLastSnappedIndex());
+            return new EtaUpdateResult(new java.util.HashMap<>(state.getEtaMap()), state.getLastSnappedIndex());
         }
 
         SnapResult snap = snapToRoute(position, polyline, state.getLastSnappedIndex());

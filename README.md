@@ -23,11 +23,13 @@ docker compose up --build
 - **Spatial Grid Index** — O(1) candidate lookup using a pre-built spatial grid; rebuilt on every geofence reload.
 - **ETA Service** — Projects vehicle position onto a polyline, computes per-stop ETA with EMA speed smoothing and a publish-threshold to suppress jitter.
 - **State Recovery** — Snapshots persisted to `vehicle_state_snapshots`; replayed on restart.
-- **Outbox pattern** — Geofence events written with `PENDING` status; a scheduled publisher marks them `SENT`.
+- **Outbox pattern** — Geofence events written with `PENDING` status; a `@Scheduled` publisher marks them `SENT` by logging (simulated delivery — no real Kafka/SNS integration).
 - **Security** — JWT for human users (ADMIN / APPROVER / EMPLOYEE), SHA-256 device API key for devices.
-- **Observability** — Micrometer counters for accepted/rejected/dropped pings; `/actuator/health,metrics,prometheus`.
+- **Observability** — Micrometer `Timer` for ping processing latency, `Counter` for dropped history entries, and a `Gauge` for queue size. Exposed at `/actuator/metrics` and `/actuator/prometheus`.
 
 ## ER Diagram
+
+> **Note:** `GEOFENCE_EVENT` and `LOCATION_PING` store plain `vehicle_id`/`zone_id` columns — these are logical foreign keys only, not database-enforced constraints.
 
 ```mermaid
 erDiagram
@@ -97,8 +99,8 @@ erDiagram
 
     GEOFENCE_EVENT {
         bigint id PK
-        bigint vehicle_id FK
-        bigint zone_id FK
+        bigint vehicle_id
+        bigint zone_id
         string event_type
         bigint timestamp_ms
         boolean detected_after_gap
@@ -108,7 +110,7 @@ erDiagram
     LOCATION_PING {
         bigint id PK
         string device_id
-        bigint vehicle_id FK
+        bigint vehicle_id
         double latitude
         double longitude
         double speed
@@ -117,13 +119,17 @@ erDiagram
     }
 
     VEHICLE_STATE_SNAPSHOT {
-        bigint id PK
-        bigint vehicle_id FK
-        text state_json
-        bigint updated_at_ms
+        bigint vehicle_id PK
+        double last_latitude
+        double last_longitude
+        bigint last_timestamp_ms
+        double speed_ema
+        int last_snapped_index
+        text zone_states_json
+        text eta_map_json
     }
 
-    VEHICLE ||--|{ DEVICE : "one-to-one"
+    VEHICLE ||--o| DEVICE : "has"
     ROUTE ||--o{ ROUTE_STOP : "contains"
     VEHICLE }o--|| ROUTE : "assigned to"
     ROUTE_STOP ||--o{ GEOFENCE_ZONE : "associated with"
@@ -137,17 +143,17 @@ erDiagram
 
 ## API Quick Reference
 
-All endpoints (except `/api/auth/login`, `/api/pings`, and `/actuator/health`) require `Authorization: Bearer <token>`.
+Ping auth requires **both** `X-Device-ID` and `X-Api-Key` headers. All other endpoints (except `/api/auth/login` and `/actuator/health`) require `Authorization: Bearer <token>`.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/api/auth/login` | — | Returns JWT token |
-| `POST` | `/api/pings` | Device API Key (`X-Api-Key`) | Ingest GPS ping |
+| `POST` | `/api/pings` | `X-Device-ID` + `X-Api-Key` | Ingest GPS ping |
 | `GET` | `/api/vehicles/{id}/position` | ADMIN, APPROVER | Last known position |
 | `GET` | `/api/vehicles/{id}/events` | ADMIN, APPROVER | Geofence events |
 | `GET` | `/api/pickups/me/eta` | EMPLOYEE | Employee's ETA to pickup stop |
 | `GET` | `/api/routes` | ADMIN | List all routes |
-| `POST` | `/api/routes` | ADMIN | Create route (computes stop cumulative distances) |
+| `POST` | `/api/routes` | ADMIN | Create route |
 | `GET` | `/api/geofences` | ADMIN | List all geofence zones |
 | `POST` | `/api/geofences` | ADMIN | Create geofence zone |
 | `GET` | `/api/devices` | ADMIN | List devices (no key hash exposed) |
@@ -158,25 +164,28 @@ All endpoints (except `/api/auth/login`, `/api/pings`, and `/actuator/health`) r
 
 ## curl Walkthrough
 
+Run from a clean `docker compose up --build` with the seeded data.
+
 ```bash
-# 1. Login as admin
+# 1. Login as admin (captures token)
 TOKEN=$(curl -s -X POST http://localhost:8081/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}' | jq -r .token)
 
-# 2. Send a GPS ping using the seeded device key
+# 2. Send a GPS ping — BOTH X-Device-ID and X-Api-Key are required
 curl -X POST http://localhost:8081/api/pings \
+  -H "X-Device-ID: DEV-001" \
   -H "X-Api-Key: test-api-key-001" \
   -H "Content-Type: application/json" \
   -d '{"deviceId":"DEV-001","lat":12.935,"lon":77.610,"speed":10.0,"bearing":90.0,"ts":'$(date +%s000)'}'
 
-# 3. Get vehicle position
+# 3. Get vehicle position (send at least one ping first)
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/api/vehicles/1/position
 
 # 4. Get geofence events
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/api/vehicles/1/events
 
-# 5. Employee ETA (login as employee1 first)
+# 5. Employee ETA (requires a ping so the vehicle has a position)
 EMP_TOKEN=$(curl -s -X POST http://localhost:8081/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"employee1","password":"emp123"}' | jq -r .token)
@@ -202,11 +211,23 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/api/routes
 ./mvnw test
 ```
 
-Tests use H2 in-memory via `src/test/resources/application-test.properties`. No Postgres needed.
+Uses H2 in-memory via `src/test/resources/application-test.properties`. No Postgres needed.
 
-## Building & Running Locally
+## Running Locally (without Docker)
 
 ```bash
+# 1. Start Postgres on port 5433 first
+docker compose up -d postgres
+
+# 2. Run the application
 export DB_PASSWORD=yourpassword
 ./mvnw spring-boot:run
 ```
+
+## Known Limitations
+
+| Area | Note |
+|------|------|
+| Outbox publishing | Events are marked SENT after a log statement — no real Kafka/SNS/webhook integration. |
+| Periodic state flush | Every vehicle snapshot is written every 5 seconds regardless of changes (no dirty flag). Acceptable for this scale. |
+| Geofence/Device validation | Shape-specific fields are validated in the controller; bean-validation (`@Valid`) annotations are not yet on the request body. |

@@ -193,13 +193,21 @@ class EtaServiceTest {
     }
 
     @Test
-    void updateEta_nullRoute_noOp() {
+    void updateEta_nullRoute_preservesExistingEtas() {
         VehicleState state = new VehicleState(1L);
         state.setSpeedEma(10.0);
+        // Pre-populate an ETA entry that must survive the null-route early return
+        state.getEtaMap().put(99L, new VehicleState.EtaEntry(300, 300, VehicleState.EtaStatus.PENDING));
 
-        // Should not throw
-        etaService.updateEta(new GeoPoint(12.930, 77.610), state, null, false);
-        assertTrue(state.getEtaMap().isEmpty());
+        var result = etaService.updateEta(new GeoPoint(12.930, 77.610), state, null, false);
+
+        // Must not throw, and the returned map must preserve the existing entry
+        assertNotNull(result);
+        assertEquals(1, result.etaMap().size(), "ETA map must not be wiped on null route");
+        assertNotNull(result.etaMap().get(99L));
+
+        // State itself must NOT be mutated — ingestion owns that
+        assertEquals(1, state.getEtaMap().size(), "State map must not be cleared by updateEta");
     }
 
     @Test
