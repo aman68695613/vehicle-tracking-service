@@ -199,6 +199,24 @@ The repository includes `postman_collection.json`. Import it into Postman and fo
 11. **Actuator → Metrics (Admin only)** — lists available metrics.
 12. **Negative tests** — run "Login - Bad Credentials" (expect 401) and "Ping without valid device credentials" (expect 401).
 The collection's test scripts automatically capture JWT tokens into collection variables after each login. Run requests in the order above — pings must come before position/events/ETA.
+## Seeded Test Data
+
+The application seeds the following data on first startup (idempotent — skipped if vehicles already exist):
+
+| Entity | Value |
+|--------|-------|
+| Route | `Route-EC-MG` — Electronic City → Silk Board → Koramangala → MG Road (4 stops) |
+| Vehicle | `KA-01-AB-1234` (business unit `BU-BANGALORE`, assigned to `Route-EC-MG`) |
+| Device | `DEV-001`, API key `test-api-key-001`, linked to vehicle `KA-01-AB-1234` |
+| Geofence 1 | `Koramangala Pickup Zone` — circle, 300 m radius, around Koramangala Pickup stop |
+| Geofence 2 | `MG Road Office Gate` — rectangle, 10 m margin, around MG Road Office stop |
+| Geofence 3 | `Restricted Night Zone` — circle, 200 m radius, active 22:00–06:00 IST |
+| Admin user | `admin` / `admin123` |
+| Approver user | `approver` / `approver123` |
+| Employee user | `employee1` / `emp123` |
+| Pickup request | `employee1` is assigned to the `Koramangala Pickup` stop |
+
+**Note:** The device API key (`test-api-key-001`) is stored as a SHA-256 hash in the database — the plaintext value above is only for local demo use.
 ## 9. API Reference
 All URLs below use `{{baseUrl}}`, which defaults to `http://localhost:8080`.
 | Method | Endpoint | Authentication | Purpose |
@@ -389,16 +407,80 @@ Test coverage includes:
 - Security tests for role-based access and bad credentials.
 The Postman collection complements automated tests by exercising the running REST API.
 ## 15. Demo Video
-The accompanying demo video demonstrates how to start the application with Docker and exercise the API through Postman.
-### Suggested video sequence
-1. Show the repository and its README.
-2. Run `docker compose up --build -d`.
-3. Show `docker compose ps` with the application running and PostgreSQL healthy.
-4. Open the health endpoint and show the `UP` response.
-5. Import the Postman collection and follow the run order in Section 8.
-6. Demonstrate one invalid login or invalid device-credential request.
-7. Optionally show persistence by restarting the containers and retrieving an existing record.
-Keep the demo focused on the request, response, and behavior being demonstrated. Avoid displaying database passwords, JWTs, or other secrets.
+
+### Explore the API with Postman
+
+To explore and test the full API structure, import the included collection into Postman:
+
+1. Open Postman.
+2. Click **Import**.
+3. Select the file `postman_collection.json` from the root of this repository.
+4. The collection **"MoveInSync – Live Vehicle Tracking Demo"** will appear in your sidebar.
+5. Set the `baseUrl` collection variable to `http://localhost:8080` if it is not already set.
+6. Run the requests in the order listed below.
+
+---
+
+### Demo scenario — a cab driving from Electronic City to MG Road
+
+The demo video and the **MoveInSync – Live Vehicle Tracking Demo** Postman collection follow a real-world scenario: a company cab (`KA-01-AB-1234`, device `DEV-001`) drives along the seeded route from **Electronic City** through **Silk Board Junction** and **Koramangala** to the **MG Road Office**. Along the way the backend detects geofence entry and exit events, updates the employee's ETA at each checkpoint, and rejects invalid or malformed pings.
+
+The collection requests map to the following steps in the scenario:
+
+| # | Request | What it demonstrates |
+|---|---------|----------------------|
+| 1 | Health Check | Application is up and PostgreSQL is healthy |
+| 2 | Admin Login | JWT issued for the ADMIN role |
+| 3 | Employee Login | JWT issued for the EMPLOYEE role |
+| 4 | Ping — Electronic City | First accepted ping; vehicle position is established |
+| 5 | Get Vehicle Position | Last known position returned for the admin |
+| 6 | Get Employee ETA | Employee sees ETA to the Koramangala Pickup stop |
+| 7 | Ping — Silk Board | Vehicle advances; ETA shortens |
+| 8 | Position After Silk Board | Updated position confirmed |
+| 9 | ETA After Silk Board | Updated ETA confirmed |
+| 10 | Ping — Koramangala Entry | Vehicle enters the Koramangala Pickup geofence |
+| 11 | Get Geofence Events — Entry | ENTRY event visible in the event log |
+| 12 | Ping — Koramangala Exit | Vehicle leaves the Koramangala zone |
+| 13 | Get Geofence Events — Exit | EXIT event appended to the log |
+| 14 | Ping — Zone 3 Entry | Vehicle enters the Restricted Night Zone |
+| 15 | Get Zone 3 Entry Event | ENTRY event for restricted zone |
+| 16 | Ping — Zone 3 Exit | Vehicle leaves the restricted zone |
+| 17 | Get Zone 3 Exit Event | EXIT event for restricted zone |
+| 18 | Duplicate Ping — First | Accepted (first time seen) |
+| 19 | Duplicate Ping — Repeat | Rejected as DUPLICATE |
+| 20 | Out-of-Order Ping | Stored as history only, state unchanged |
+| 21 | Stale Ping | Rejected as STALE (older than 5 min) |
+| 22 | Future Timestamp Ping | Rejected as REJECTED_FUTURE |
+| 23 | Invalid API Key | Returns 401 (device authentication fails) |
+| 24 | Device ID Mismatch | Returns 401 (header device ID does not match body) |
+| 25 | Final Vehicle Position | Final confirmed position after the full journey |
+| 26 | Final Employee ETA | Employee's final ETA after the vehicle reaches the office gate |
+
+---
+
+### Demo video
+
+> **📹 Add demo video here**
+>
+> *(Replace this block with an embedded video link or a screen-recording file. Example: a Loom link, a GitHub release asset, or a YouTube embed.)*
+>
+> ```
+> [Demo video placeholder — insert link or embed here]
+> ```
+
+---
+
+### Demo screenshot
+
+> **🖼 Add screenshot here**
+>
+> *(Replace this block with a screenshot showing the Postman collection sidebar and a successful ping response or geofence event.)*
+>
+> ```
+> [Screenshot placeholder — insert image here]
+> ```
+
+
 ## 16. Known Limitations
 | Area | Current limitation |
 |---|---|
