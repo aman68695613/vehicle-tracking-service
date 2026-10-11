@@ -407,7 +407,12 @@ Test coverage includes:
 - Security tests for role-based access and bad credentials.
 The Postman collection complements automated tests by exercising the running REST API.
 ## 15. Demo Video
+### Demo video
+ Demo video Link: https://youtu.be/zee7tmWVdMA
 
+### Demo screenshot
+
+<img width="1920" height="1200" alt="Screenshot (2727)" src="https://github.com/user-attachments/assets/049d7c60-04db-4f1d-a237-4f0f22d27957" />
 ### Explore with Postman
 
 Two Postman collections are included at the root of this repository:
@@ -469,13 +474,6 @@ The collection requests map to the following steps in the scenario:
 | 26 | Final Employee ETA | Employee's final ETA after the vehicle reaches the office gate |
 
 ---
-
-### Demo video
- Demo video Link: https://youtu.be/zee7tmWVdMA
-
-### Demo screenshot
-
-<img width="1920" height="1200" alt="Screenshot (2727)" src="https://github.com/user-attachments/assets/049d7c60-04db-4f1d-a237-4f0f22d27957" />
 
 ## 16. Known Limitations
 | Area | Current limitation |
