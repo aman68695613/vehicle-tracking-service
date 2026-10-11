@@ -1,3 +1,4 @@
+
 {
   "info": {
     "name": "Vehicle Tracking Service",
@@ -5,9 +6,21 @@
     "_postman_id": "vts-2026-collection"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8081", "type": "string" },
-    { "key": "token",   "value": "", "type": "string" },
-    { "key": "empToken","value": "", "type": "string" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "empToken",
+      "value": "",
+      "type": "string"
+    }
   ],
   "item": [
     {
@@ -15,107 +28,207 @@
       "item": [
         {
           "name": "Login as Admin",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "pm.test('Login succeeded', () => pm.response.to.have.status(200));",
-                "pm.collectionVariables.set('token', pm.response.json().token);"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login succeeded', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('token', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}" },
-            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
           }
         },
         {
           "name": "Login as Employee",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "pm.test('Login succeeded', () => pm.response.to.have.status(200));",
-                "pm.collectionVariables.set('empToken', pm.response.json().token);"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login succeeded', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('empToken', pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"employee1\",\n  \"password\": \"emp123\"\n}" },
-            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"employee1\",\n  \"password\": \"emp123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
           }
         },
         {
           "name": "Login - Bad Credentials (expect 401)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"wrongpassword\"\n}" },
-            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"wrongpassword\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
           }
         }
       ]
     },
     {
       "name": "Pings",
-      "description": "Run Login as Admin FIRST to populate {{token}}, then run Send GPS Ping before calling vehicle/events endpoints.",
+      "description": "Run Login as Admin first if needed. Send GPS Ping before calling vehicle/events endpoints.",
       "item": [
         {
           "name": "Send GPS Ping",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('ts', Date.now());"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Device-ID", "value": "DEV-001" },
-              { "key": "X-Api-Key",   "value": "test-api-key-001" },
-              { "key": "Content-Type","value": "application/json" }
+              {
+                "key": "X-Device-ID",
+                "value": "DEV-001"
+              },
+              {
+                "key": "X-Api-Key",
+                "value": "test-api-key-001"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"deviceId\": \"DEV-001\",\n  \"lat\": 12.935,\n  \"lon\": 77.610,\n  \"speed\": 10.0,\n  \"bearing\": 90.0,\n  \"ts\": {{$timestamp}}000\n}"
+              "raw": "{\n  \"deviceId\": \"DEV-001\",\n  \"lat\": 12.935,\n  \"lon\": 77.610,\n  \"speed\": 10.0,\n  \"bearing\": 90.0,\n  \"ts\": {{ts}}\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/pings", "host": ["{{baseUrl}}"], "path": ["api","pings"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/pings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "pings"]
+            }
           }
         },
         {
           "name": "Ping without valid device credentials (expect 401)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('ts', Date.now());"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"deviceId\": \"DEV-001\",\n  \"lat\": 12.935,\n  \"lon\": 77.610,\n  \"speed\": 10.0,\n  \"bearing\": 90.0,\n  \"ts\": {{$timestamp}}000\n}"
+              "raw": "{\n  \"deviceId\": \"DEV-001\",\n  \"lat\": 12.935,\n  \"lon\": 77.610,\n  \"speed\": 10.0,\n  \"bearing\": 90.0,\n  \"ts\": {{ts}}\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/pings", "host": ["{{baseUrl}}"], "path": ["api","pings"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/pings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "pings"]
+            }
           }
         }
       ]
     },
     {
       "name": "Vehicles",
-      "description": "Send a GPS Ping first so the vehicle has a position. Otherwise these return 404.",
+      "description": "Send a GPS Ping first so the vehicle has a position.",
       "item": [
         {
           "name": "Get Vehicle Position",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/vehicles/1/position", "host": ["{{baseUrl}}"], "path": ["api","vehicles","1","position"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/vehicles/1/position",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vehicles", "1", "position"]
+            }
           }
         },
         {
           "name": "Get Vehicle Events",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/vehicles/1/events", "host": ["{{baseUrl}}"], "path": ["api","vehicles","1","events"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/vehicles/1/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vehicles", "1", "events"]
+            }
           }
         }
       ]
@@ -127,8 +240,17 @@
           "name": "Get All Routes",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/routes", "host": ["{{baseUrl}}"], "path": ["api","routes"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/routes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "routes"]
+            }
           }
         },
         {
@@ -136,14 +258,24 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "Content-Type",  "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Test Route\",\n  \"polylineJson\": \"[[12.930,77.610],[12.940,77.620],[12.950,77.630]]\",\n  \"stops\": [\n    {\"sequenceIndex\": 0, \"name\": \"Stop A\", \"latitude\": 12.930, \"longitude\": 77.610, \"cumulativeDistanceMetres\": 0},\n    {\"sequenceIndex\": 1, \"name\": \"Stop B\", \"latitude\": 12.950, \"longitude\": 77.630, \"cumulativeDistanceMetres\": 0}\n  ]\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/routes", "host": ["{{baseUrl}}"], "path": ["api","routes"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/routes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "routes"]
+            }
           }
         }
       ]
@@ -155,8 +287,17 @@
           "name": "Get All Geofences",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/geofences", "host": ["{{baseUrl}}"], "path": ["api","geofences"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/geofences",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "geofences"]
+            }
           }
         },
         {
@@ -164,14 +305,24 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "Content-Type",  "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Test Circle Zone\",\n  \"shape\": \"CIRCLE\",\n  \"purpose\": \"PICKUP\",\n  \"centreLat\": 12.935,\n  \"centreLon\": 77.610,\n  \"radiusMetres\": 200.0,\n  \"marginMetres\": 0.0\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/geofences", "host": ["{{baseUrl}}"], "path": ["api","geofences"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/geofences",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "geofences"]
+            }
           }
         }
       ]
@@ -183,8 +334,17 @@
           "name": "Get All Devices",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/devices", "host": ["{{baseUrl}}"], "path": ["api","devices"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/devices",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "devices"]
+            }
           }
         },
         {
@@ -193,28 +353,47 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "Content-Type",  "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"deviceId\": \"DEV-002\",\n  \"apiKey\": \"new-device-api-key-002\",\n  \"vehicleId\": 999\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/devices", "host": ["{{baseUrl}}"], "path": ["api","devices"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/devices",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "devices"]
+            }
           }
         }
       ]
     },
     {
       "name": "Pickups",
-      "description": "Send a GPS Ping first, then login as employee to get a valid empToken.",
+      "description": "Send a GPS Ping first, then login as employee to populate empToken.",
       "item": [
         {
           "name": "Get My ETA (Employee)",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{empToken}}" }],
-            "url": { "raw": "{{baseUrl}}/api/pickups/me/eta", "host": ["{{baseUrl}}"], "path": ["api","pickups","me","eta"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{empToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/pickups/me/eta",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "pickups", "me", "eta"]
+            }
           }
         }
       ]
@@ -226,15 +405,28 @@
           "name": "Health Check (public)",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/actuator/health", "host": ["{{baseUrl}}"], "path": ["actuator","health"] }
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            }
           }
         },
         {
           "name": "Metrics (Admin only)",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": { "raw": "{{baseUrl}}/actuator/metrics", "host": ["{{baseUrl}}"], "path": ["actuator","metrics"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/metrics",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "metrics"]
+            }
           }
         }
       ]

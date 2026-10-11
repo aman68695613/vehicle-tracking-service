@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in your shell or a .env file}
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -29,6 +29,6 @@ services:
       - SPRING_DATASOURCE_USERNAME=postgres
       - DB_PASSWORD=${DB_PASSWORD}
     ports:
-      - "8081:8080"
+      - "8080:8080"
 volumes:
   pgdata:
