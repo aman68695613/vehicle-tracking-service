@@ -3,28 +3,128 @@
 A Java/Spring Boot backend service that processes GPS location updates, tracks vehicle positions, detects geofence entry and exit events, and calculates estimated arrival times (ETAs) for employee pickups.
 Built as a solution to the **MoveInSync SDE — Java Backend Hiring Assessment, Case Study 2**.
 ## Table of Contents
-- 1. Setup (Quickstart)
-- 2. Problem Statement
-- 3. Requirements Coverage
-- 4. Key Features
-- 5. Technology Stack
-- 6. Architecture
-- 7. Test with Postman
-- 8. API Reference
-- 9. Database Design
-- 10. Concurrency & Correctness
-- 11. Complexity
-- 12. Design Decisions and Trade-offs
-- 13. Testing
-- 14. Demo Video
-- 15. Known Limitations
+- [1. Setup (Docker Recommended)](#7-run-with-docker-recommended)
+- [2. Problem Statement](#1-problem-statement)
+- [3. Requirements Coverage](#2-requirements-coverage)
+- [4. Key Features](#3-key-features)
+- [5. Technology Stack](#4-technology-stack)
+- [6. Architecture](#5-architecture)
+- [7. Prerequisites](#6-prerequisites)
+- [8. Test with Postman](#8-test-with-postman)
+- [9. API Reference](#9-api-reference)
+- [10. Database Design](#10-database-design)
+- [11. Concurrency & Correctness](#11-concurrency--correctness)
+- [12. Complexity](#12-complexity)
+- [13. Design Decisions and Trade-offs](#13-design-decisions-and-trade-offs)
+- [14. Testing](#14-testing)
+- [15. Demo Video](#15-demo-video)
+- [16. Known Limitations](#16-known-limitations)
 ---
-## 1. Setup (Quickstart)
+## 1. Problem Statement
+MoveInSync's vehicle-tracking use case involves thousands of cabs sending GPS pings every few seconds. The backend must maintain the latest valid vehicle position, detect pickup and office-gate geofence crossings, and calculate ETAs despite duplicate, stale, or out-of-order location updates.
+This implementation addresses the following requirements:
+- **GPS ingestion:** Validate incoming coordinates and timestamps and associate devices with vehicles.
+- **Idempotency and ordering:** Detect duplicate pings and prevent older locations from overwriting newer state.
+- **Geofencing:** Detect circle and rectangle zone entry and exit transitions.
+- **Time-windowed zones:** Support zones active only during configured time windows.
+- **Route-based ETA:** Snap GPS locations to planned routes and estimate arrival times at route stops.
+- **Scale:** Use spatial indexing to reduce the number of geofences considered per ping.
+- **Recovery:** Persist vehicle-state snapshots and restore them on application startup.
+- **Security and monitoring:** Provide JWT-based user authentication, role-based access, device authentication, and application metrics.
+## 2. Requirements Coverage
+| Case-study requirement | How it's implemented |
+|---|---|
+| Ingest ping stream (lat, lon, bearing, speed, ts, deviceId) | `POST /api/pings`, device→vehicle resolved via cached registry |
+| Idempotent & ordered | Caffeine dedup cache on `deviceId:ts` + DB unique constraint on `(device_id, timestamp_ms)`; older-than-last-timestamp pings stored as history only |
+| Stale/future rejection | Pings older than 5 min or more than 30s in the future are rejected |
+| Fire ENTRY/EXIT exactly once | Per-(vehicle, zone) inside/outside state; transition-only event firing |
+| Circle & rectangle zones | Haversine distance for circles; lat/lon bounds check for rectangles |
+| Time-windowed zones | `TimeWindow` with midnight-wrap support, judged in the zone's timezone |
+| Vehicle-specific zones | Optional `allowedVehicleIds` filter per zone |
+| Snap to route | Windowed projection onto polyline segments (±10 around last index, full-scan fallback beyond 500m) |
+| ETA with traffic factor | `remaining_distance / effective_speed × traffic_factor`, EMA-smoothed speed, 15s publish threshold |
+| Scale: no full geofence scan | `GridIndex` — ~1km cells, O(1) candidate lookup per ping |
+| Gap & recovery | >2 min silence flags `detectedAfterGap`; snapshots replayed on restart |
+| Auth & roles | JWT for ADMIN/APPROVER/EMPLOYEE; SHA-256 device API key for devices |
+| Monitoring | Micrometer Timer (ingestion latency), Counter (dropped history), Gauge (queue size) |
+## 3. Key Features
+### GPS ingestion and validation
+- Accept GPS pings containing device ID, latitude, longitude, speed, bearing, and timestamp.
+- Validate stale and future timestamps.
+- Deduplicate repeated pings and enforce monotonic position updates.
+- Use striped locks to coordinate concurrent processing.
+- Persist location history in PostgreSQL.
+### Geofence engine
+- Supports circular and rectangular geofences.
+- Tracks inside/outside state to avoid emitting an event on every ping while a vehicle remains inside a zone.
+- Supports configurable margins, time windows, and vehicle-specific zone restrictions.
+- Detects transitions after tracking gaps and records whether an event was detected after a gap.
+- Uses a spatial grid index to narrow candidate geofences.
+### ETA calculation
+- Projects the vehicle's GPS position onto its planned route.
+- Calculates remaining route distance to configured stops.
+- Uses an exponentially smoothed speed estimate.
+- Supports a configurable traffic factor and minimum effective speed.
+- Suppresses insignificant ETA updates using a configurable publication threshold.
+### Persistence and recovery
+- Stores location history, geofence events, routes, stops, devices, and vehicle-state snapshots in PostgreSQL.
+- Restores persisted vehicle snapshots during startup.
+- Uses a named Docker volume to retain database data across container recreation.
+### Outbox and observability
+- Records geofence events with a pending status before processing them through the outbox worker.
+- Includes Micrometer metrics for ping-processing latency, dropped history entries, and queue size.
+- Exposes health and metrics endpoints through Spring Boot Actuator.
+> **Important:** The outbox publisher currently simulates delivery by logging events and marking them as sent. No real Kafka, SNS, or webhook integration is configured.
+## 4. Technology Stack
+| Component | Technology |
+|---|---|
+| Language | Java 21 |
+| Framework | Spring Boot 4.1.1 |
+| API | Spring MVC / REST |
+| Security | Spring Security, JWT |
+| Persistence | Spring Data JPA, Hibernate |
+| Database | PostgreSQL 16 |
+| Build tool | Maven |
+| Caching | Caffeine |
+| Monitoring | Spring Boot Actuator, Micrometer |
+| API testing | Postman |
+| Containerization | Docker, Docker Compose |
+| Testing | JUnit and Spring Boot test dependencies |
+## 5. Architecture
+The application follows a layered architecture.
+```mermaid
+flowchart TD
+    A[GPS Device] --> B[Ping Controller]
+    B --> C[Device Authentication]
+    C --> D[Ingestion Service]
+    D --> E[Validation and Deduplication]
+    E --> F[Vehicle State and Geofence Engine]
+    F --> G[ETA Service]
+    D --> H[Location History Writer]
+    F --> I[Geofence Event Outbox]
+    G --> J[State Snapshots]
+    H --> K[(PostgreSQL)]
+    I --> K
+    J --> K
+    L[Employee / Admin / Approver] --> M[JWT Authentication]
+    M --> N[REST Controllers]
+    N --> K
+```
+### Request processing flow
+1. A device sends a GPS ping with its device ID, API key, and location data.
+2. The backend authenticates the device and validates the timestamp.
+3. Duplicate and out-of-order pings are rejected or ignored according to the ingestion rules.
+4. Accepted locations update vehicle state and trigger geofence evaluation.
+5. The ETA service calculates arrival estimates using the vehicle's route and effective speed.
+6. Location history and geofence events are persisted, while state snapshots support recovery.
+7. Authorized users retrieve vehicle positions, events, routes, and ETAs through REST APIs.
+## 6. Prerequisites
 For the recommended Docker setup, install:
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - [Postman](https://www.postman.com/)
 Docker Desktop must be running before you start the application.
 You do not need to install Java or PostgreSQL locally to run the application through Docker Compose.
+## 7. Run with Docker (Recommended)
 ### Step 1: Clone the repository
 ```bash
 git clone <YOUR_GITHUB_REPOSITORY_URL>
@@ -82,105 +182,8 @@ docker compose up -d
 ```
 The `pgdata` named volume preserves database data across these operations.
 **Warning:** `docker compose down -v` removes named volumes and can delete the database data.
-## 2. Problem Statement
-MoveInSync's vehicle-tracking use case involves thousands of cabs sending GPS pings every few seconds. The backend must maintain the latest valid vehicle position, detect pickup and office-gate geofence crossings, and calculate ETAs despite duplicate, stale, or out-of-order location updates.
-This implementation addresses the following requirements:
-- **GPS ingestion:** Validate incoming coordinates and timestamps and associate devices with vehicles.
-- **Idempotency and ordering:** Detect duplicate pings and prevent older locations from overwriting newer state.
-- **Geofencing:** Detect circle and rectangle zone entry and exit transitions.
-- **Time-windowed zones:** Support zones active only during configured time windows.
-- **Route-based ETA:** Snap GPS locations to planned routes and estimate arrival times at route stops.
-- **Scale:** Use spatial indexing to reduce the number of geofences considered per ping.
-- **Recovery:** Persist vehicle-state snapshots and restore them on application startup.
-- **Security and monitoring:** Provide JWT-based user authentication, role-based access, device authentication, and application metrics.
-## 3. Requirements Coverage
-| Case-study requirement | How it's implemented |
-|---|---|
-| Ingest ping stream (lat, lon, bearing, speed, ts, deviceId) | `POST /api/pings`, device→vehicle resolved via cached registry |
-| Idempotent & ordered | Caffeine dedup cache on `deviceId:ts` + DB unique constraint on `(device_id, timestamp_ms)`; older-than-last-timestamp pings stored as history only |
-| Stale/future rejection | Pings older than 5 min or more than 30s in the future are rejected |
-| Fire ENTRY/EXIT exactly once | Per-(vehicle, zone) inside/outside state; transition-only event firing |
-| Circle & rectangle zones | Haversine distance for circles; lat/lon bounds check for rectangles |
-| Time-windowed zones | `TimeWindow` with midnight-wrap support, judged in the zone's timezone |
-| Vehicle-specific zones | Optional `allowedVehicleIds` filter per zone |
-| Snap to route | Windowed projection onto polyline segments (±10 around last index, full-scan fallback beyond 500m) |
-| ETA with traffic factor | `remaining_distance / effective_speed × traffic_factor`, EMA-smoothed speed, 15s publish threshold |
-| Scale: no full geofence scan | `GridIndex` — ~1km cells, O(1) candidate lookup per ping |
-| Gap & recovery | >2 min silence flags `detectedAfterGap`; snapshots replayed on restart |
-| Auth & roles | JWT for ADMIN/APPROVER/EMPLOYEE; SHA-256 device API key for devices |
-| Monitoring | Micrometer Timer (ingestion latency), Counter (dropped history), Gauge (queue size) |
-## 4. Key Features
-### GPS ingestion and validation
-- Accept GPS pings containing device ID, latitude, longitude, speed, bearing, and timestamp.
-- Validate stale and future timestamps.
-- Deduplicate repeated pings and enforce monotonic position updates.
-- Use striped locks to coordinate concurrent processing.
-- Persist location history in PostgreSQL.
-### Geofence engine
-- Supports circular and rectangular geofences.
-- Tracks inside/outside state to avoid emitting an event on every ping while a vehicle remains inside a zone.
-- Supports configurable margins, time windows, and vehicle-specific zone restrictions.
-- Detects transitions after tracking gaps and records whether an event was detected after a gap.
-- Uses a spatial grid index to narrow candidate geofences.
-### ETA calculation
-- Projects the vehicle's GPS position onto its planned route.
-- Calculates remaining route distance to configured stops.
-- Uses an exponentially smoothed speed estimate.
-- Supports a configurable traffic factor and minimum effective speed.
-- Suppresses insignificant ETA updates using a configurable publication threshold.
-### Persistence and recovery
-- Stores location history, geofence events, routes, stops, devices, and vehicle-state snapshots in PostgreSQL.
-- Restores persisted vehicle snapshots during startup.
-- Uses a named Docker volume to retain database data across container recreation.
-### Outbox and observability
-- Records geofence events with a pending status before processing them through the outbox worker.
-- Includes Micrometer metrics for ping-processing latency, dropped history entries, and queue size.
-- Exposes health and metrics endpoints through Spring Boot Actuator.
-> **Important:** The outbox publisher currently simulates delivery by logging events and marking them as sent. No real Kafka, SNS, or webhook integration is configured.
-## 5. Technology Stack
-| Component | Technology |
-|---|---|
-| Language | Java 21 |
-| Framework | Spring Boot 4.1.1 |
-| API | Spring MVC / REST |
-| Security | Spring Security, JWT |
-| Persistence | Spring Data JPA, Hibernate |
-| Database | PostgreSQL 16 |
-| Build tool | Maven |
-| Caching | Caffeine |
-| Monitoring | Spring Boot Actuator, Micrometer |
-| API testing | Postman |
-| Containerization | Docker, Docker Compose |
-| Testing | JUnit and Spring Boot test dependencies |
-## 6. Architecture
-The application follows a layered architecture.
-```mermaid
-flowchart TD
-    A[GPS Device] --> B[Ping Controller]
-    B --> C[Device Authentication]
-    C --> D[Ingestion Service]
-    D --> E[Validation and Deduplication]
-    E --> F[Vehicle State and Geofence Engine]
-    F --> G[ETA Service]
-    D --> H[Location History Writer]
-    F --> I[Geofence Event Outbox]
-    G --> J[State Snapshots]
-    H --> K[(PostgreSQL)]
-    I --> K
-    J --> K
-    L[Employee / Admin / Approver] --> M[JWT Authentication]
-    M --> N[REST Controllers]
-    N --> K
-```
-### Request processing flow
-1. A device sends a GPS ping with its device ID, API key, and location data.
-2. The backend authenticates the device and validates the timestamp.
-3. Duplicate and out-of-order pings are rejected or ignored according to the ingestion rules.
-4. Accepted locations update vehicle state and trigger geofence evaluation.
-5. The ETA service calculates arrival estimates using the vehicle's route and effective speed.
-6. Location history and geofence events are persisted, while state snapshots support recovery.
-7. Authorized users retrieve vehicle positions, events, routes, and ETAs through REST APIs.
-## 7. Test with Postman
+
+## 8. Test with Postman
 The repository includes `postman_collection.json`. Import it into Postman and follow this order:
 1. **Health Check** — confirm the app is up.
 2. **Auth → Login as Admin** — captures the admin JWT into `{{token}}`.
@@ -195,7 +198,7 @@ The repository includes `postman_collection.json`. Import it into Postman and fo
 11. **Actuator → Metrics (Admin only)** — lists available metrics.
 12. **Negative tests** — run "Login - Bad Credentials" (expect 401) and "Ping without valid device credentials" (expect 401).
 The collection's test scripts automatically capture JWT tokens into collection variables after each login. Run requests in the order above — pings must come before position/events/ETA.
-## 8. API Reference
+## 9. API Reference
 All URLs below use `{{baseUrl}}`, which defaults to `http://localhost:8080`.
 | Method | Endpoint | Authentication | Purpose |
 |---|---|---|---|
@@ -214,7 +217,7 @@ All URLs below use `{{baseUrl}}`, which defaults to `http://localhost:8080`.
 | `GET` | `/actuator/metrics` | Admin in the demo configuration | List available metrics |
 | `GET` | `/actuator/prometheus` | Admin in the demo configuration | Expose Prometheus metrics |
 Ping responses: `ACCEPTED`, `DUPLICATE`, `STALE`, `OUT_OF_ORDER`, `REJECTED_FUTURE`.
-## 9. Database Design
+## 10. Database Design
 The primary entities include:
 - **Vehicle:** Vehicle identity, registration, business unit, and assigned route.
 - **Device:** Registered GPS device, API key hash, and associated vehicle.
@@ -327,13 +330,13 @@ erDiagram
     VEHICLE ||--o{ LOCATION_PING : "produces"
     VEHICLE ||--o| VEHICLE_STATE_SNAPSHOT : "snapshots"
 ```
-## 10. Concurrency & Correctness
+## 11. Concurrency & Correctness
 - **Per-vehicle serialization:** 64 striped `ReentrantLock`s keyed by `vehicleId % 64` — concurrent pings for the same vehicle are ordered; different vehicles proceed in parallel.
 - **Dedup, two layers:** in-memory Caffeine cache (fast path) + DB unique constraint on `(device_id, timestamp_ms)` (guarantee).
 - **Persist-then-commit:** geofence transitions and state snapshots are written in a DB transaction *before* in-memory state is updated. A DB failure discards memory changes and returns 503 — no phantom state.
 - **Async history writes:** bounded queue (10k) + single consumer thread batching 100 pings per write. Queue-full drops are counted, never blocking ingestion.
 - **Verified:** `IngestionServiceTest#concurrency_handlesConcurrentPings` — 50 threads, 0 exceptions, exactly one final state; `SimulatorTest` — end-to-end HTTP run covering gap, duplicate, and out-of-order pings with exact event assertions.
-## 11. Complexity
+## 12. Complexity
 | Operation | Complexity | Notes |
 |---|---|---|
 | Geofence candidate lookup | O(1) | GridIndex, ~1km cells, volatile snapshot swap |
@@ -342,7 +345,7 @@ erDiagram
 | Dedup check | O(1) | Caffeine cache, 100k entries, 10-min expiry |
 | Device lookup | O(1) | Caffeine cache, 10k entries, 5-min expiry |
 | History write | O(1) amortized | Async batch of up to 100 per DB call |
-## 12. Design Decisions and Trade-offs
+## 13. Design Decisions and Trade-offs
 ### Spatial grid indexing
 The geofence engine uses a pre-built spatial grid to narrow the candidate zones evaluated for a location update.
 - **Benefit:** Avoids scanning every geofence for every ping.
@@ -367,7 +370,7 @@ Vehicle-state snapshots are persisted and restored at startup.
 History persistence and outbox publishing reduce the need to perform all work synchronously on the ingestion request path.
 - **Benefit:** Helps separate request processing from background work.
 - **Trade-off:** Bounded in-memory queues can lose unflushed entries on a process crash or when capacity is exceeded. The current publisher simulates delivery rather than integrating with an external messaging system.
-## 13. Testing
+## 14. Testing
 Run the automated tests from the repository root.
 **Windows PowerShell:**
 ```powershell
@@ -384,7 +387,7 @@ Test coverage includes:
 - An end-to-end HTTP simulator test covering gap, duplicate, and out-of-order pings with exact event assertions.
 - Security tests for role-based access and bad credentials.
 The Postman collection complements automated tests by exercising the running REST API.
-## 14. Demo Video
+## 15. Demo Video
 The accompanying demo video demonstrates how to start the application with Docker and exercise the API through Postman.
 ### Suggested video sequence
 1. Show the repository and its README.
@@ -395,7 +398,7 @@ The accompanying demo video demonstrates how to start the application with Docke
 6. Demonstrate one invalid login or invalid device-credential request.
 7. Optionally show persistence by restarting the containers and retrieving an existing record.
 Keep the demo focused on the request, response, and behavior being demonstrated. Avoid displaying database passwords, JWTs, or other secrets.
-## 15. Known Limitations
+## 16. Known Limitations
 | Area | Current limitation |
 |---|---|
 | Event delivery | The outbox worker logs simulated delivery and marks events as sent; no real Kafka, SNS, or webhook integration exists. |
