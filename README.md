@@ -471,27 +471,11 @@ The collection requests map to the following steps in the scenario:
 ---
 
 ### Demo video
-
-> **📹 Add demo video here**
->
-> *(Replace this block with an embedded video link or a screen-recording file. Example: a Loom link, a GitHub release asset, or a YouTube embed.)*
->
-> ```
-> [Demo video placeholder — insert link or embed here]
-> ```
-
----
+ Demo video Link: https://youtu.be/zee7tmWVdMA
 
 ### Demo screenshot
 
-> **🖼 Add screenshot here**
->
-> *(Replace this block with a screenshot showing the Postman collection sidebar and a successful ping response or geofence event.)*
->
-> ```
-> [Screenshot placeholder — insert image here]
-> ```
-
+<img width="1920" height="1200" alt="Screenshot (2727)" src="https://github.com/user-attachments/assets/049d7c60-04db-4f1d-a237-4f0f22d27957" />
 
 ## 16. Known Limitations
 | Area | Current limitation |
